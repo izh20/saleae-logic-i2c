@@ -166,7 +166,7 @@ ipcMain.handle('load-recording', async () => {
     title: 'Open Recording',
     filters: [
       { name: 'Recording Files', extensions: ['json'] },
-      { name: 'Saleae TXT Files', extensions: ['txt'] },
+      { name: 'Saleae Export Files', extensions: ['txt', 'csv'] },
       { name: 'All Files', extensions: ['*'] }
     ],
     properties: ['openFile']

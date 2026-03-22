@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { FingerFrame } from '../types/finger';
 import { RecordingFile } from '../types/recording';
+import { parseSaleaeCSV } from '../utils/parseSaleaeTXT';
 
 export type PlaybackSpeed = 0.25 | 0.5 | 1 | 2 | 4;
 
@@ -33,6 +34,7 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
 
   const loadRecording = useCallback((content: string): boolean => {
     try {
+      // Try to parse as our JSON format first
       const data = JSON.parse(content);
       if (data.frames && Array.isArray(data.frames)) {
         framesRef.current = data.frames;
@@ -42,10 +44,26 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
         lastScantimeRef.current = 0;
         return true;
       }
-      return false;
+    } catch {
+      // Not JSON, try Saleae CSV format
+    }
+
+    // Try to parse as Saleae CSV format
+    try {
+      const frames = parseSaleaeCSV(content);
+      if (frames.length > 0) {
+        framesRef.current = frames;
+        setTotalFrames(frames.length);
+        setCurrentFrameIndex(0);
+        setIsLoaded(true);
+        lastScantimeRef.current = 0;
+        return true;
+      }
     } catch {
       return false;
     }
+
+    return false;
   }, []);
 
   const seek = useCallback((index: number) => {

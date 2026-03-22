@@ -84,30 +84,50 @@ function parseFingerFrameFromData(data: string[], timestamp: number): FingerFram
 }
 
 /**
- * Parse Saleae Logic exported TXT file to extract FingerFrame array
- * TXT format: {timestamp} {address} {data0} {data1} {data2} ...
+ * Parse Saleae Logic exported CSV file to extract FingerFrame array
+ * CSV format:
+ * Time [s],Packet ID,Address,Data,Read/Write,ACK/NAK
+ * 1.555302937500000,0,0x2C,0x20,Read,ACK
+ * 1.555347500000000,0,0x2C,0x00,Read,ACK
+ * ...
  */
-export function parseSaleaeTXT(content: string): FingerFrame[] {
+export function parseSaleaeCSV(content: string): FingerFrame[] {
   const frames: FingerFrame[] = [];
   const lines = content.split('\n');
 
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
+  // Group data bytes by Packet ID
+  const packetMap = new Map<string, { time: number; address: string; data: string[] }>();
 
-    const parts = trimmed.split(/\s+/);
-    if (parts.length < 3) continue;
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
 
-    const address = parseHexOrDec(parts[1]);
+    // Parse CSV: Time [s],Packet ID,Address,Data,Read/Write,ACK/NAK
+    const parts = line.split(',');
+    if (parts.length < 5) continue;
 
-    // Filter I2C TX frames (address 0x2C)
-    if (address !== 0x2C) continue;
+    const time = parseFloat(parts[0]);
+    const packetId = parts[1].trim();
+    const address = parts[2].trim();
+    const data = parts[3].trim();
+    const rw = parts[4].trim();
 
-    const data = parts.slice(2);
-    // TXT files don't preserve original timestamp, use current time
-    const timestamp = Date.now();
+    // Filter I2C address 0x2C, Read operations
+    if (address !== '0x2C' || rw !== 'Read') continue;
 
-    const frame = parseFingerFrameFromData(data, timestamp);
+    if (!packetMap.has(packetId)) {
+      packetMap.set(packetId, { time, address, data: [] });
+    }
+    packetMap.get(packetId)!.data.push(data);
+  }
+
+  // Parse each packet
+  for (const [packetId, packet] of packetMap) {
+    const { time, data } = packet;
+    if (data.length < 3) continue;
+
+    // Convert data strings to hex format for parseFingerFrameFromData
+    const frame = parseFingerFrameFromData(data, time);
     if (frame) {
       frames.push(frame);
     }
@@ -115,3 +135,6 @@ export function parseSaleaeTXT(content: string): FingerFrame[] {
 
   return frames;
 }
+
+// Alias for backward compatibility
+export const parseSaleaeTXT = parseSaleaeCSV;
