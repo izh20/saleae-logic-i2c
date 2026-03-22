@@ -67,6 +67,44 @@ const App: React.FC = () => {
     };
   }, [playbackMode, isRecording, addFrame]);
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore key events in input fields
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      switch (e.key) {
+        case 'r':
+        case 'R':
+          handleRecClick();
+          break;
+        case ' ':
+          if (playbackMode) {
+            e.preventDefault();
+            handlePlayClick();
+          }
+          break;
+        case 'ArrowLeft':
+          if (playbackMode) {
+            e.preventDefault();
+            player.stepBackward();
+          }
+          break;
+        case 'ArrowRight':
+          if (playbackMode) {
+            e.preventDefault();
+            player.stepForward();
+          }
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [playbackMode, handleRecClick, handlePlayClick, player]);
+
   // Handle open file (load recording)
   const handleOpenFile = async () => {
     const result = await window.electronAPI.loadRecording();

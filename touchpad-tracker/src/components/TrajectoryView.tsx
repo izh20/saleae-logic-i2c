@@ -10,9 +10,10 @@ import {
 
 interface TrajectoryViewProps {
   config: TouchpadConfig;
+  onFrameRef?: (callback: (frame: FingerFrame) => void) => void;
 }
 
-const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config }) => {
+const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const trajectoriesRef = useRef<Map<number, FingerTrajectory>>(new Map());
   const animationFrameRef = useRef<number | null>(null);
@@ -179,17 +180,28 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config }) => {
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
-    // Subscribe to finger frames
-    const unsubscribe = window.electronAPI.onFingerFrame(handleFingerFrame);
+    // If onFrameRef is provided, use it instead of direct subscription
+    if (onFrameRef) {
+      onFrameRef(handleFingerFrame);
+    } else {
+      // Subscribe to finger frames directly
+      const unsubscribe = window.electronAPI.onFingerFrame(handleFingerFrame);
+      return () => {
+        window.removeEventListener('resize', resizeCanvas);
+        unsubscribe();
+        if (animationFrameRef.current !== null) {
+          cancelAnimationFrame(animationFrameRef.current);
+        }
+      };
+    }
 
     return () => {
       window.removeEventListener('resize', resizeCanvas);
-      unsubscribe();
       if (animationFrameRef.current !== null) {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [draw, handleFingerFrame]);
+  }, [draw, handleFingerFrame, onFrameRef]);
 
   const stateNames = ['LargeRelease', 'FingerRelease', 'LargeTouch', 'FingerTouch'];
 
