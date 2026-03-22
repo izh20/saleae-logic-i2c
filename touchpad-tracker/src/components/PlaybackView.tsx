@@ -107,6 +107,7 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame }) => 
     } else {
       // No active fingers, clear display
       setFingerCount(0);
+      setFrameRate(0);
       setScantime(0);
       setKeyState(0);
       setActiveFingers([]);

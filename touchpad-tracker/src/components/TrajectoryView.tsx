@@ -123,7 +123,7 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
 
     // Batch update state and draw immediately
     setStats({
-      frameRate,
+      frameRate: active.length > 0 ? frameRate : 0,
       fingerCount: active.length,
       scantime: active.length > 0 ? frame.scantime : 0,
       keyState: active.length > 0 ? (frame.keyState ?? 0) : 0,
