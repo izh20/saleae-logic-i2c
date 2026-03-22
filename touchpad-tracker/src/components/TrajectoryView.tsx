@@ -18,15 +18,17 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
   const trajectoriesRef = useRef<Map<number, FingerTrajectory>>(new Map());
   const animationFrameRef = useRef<number | null>(null);
 
-  // Stats state for display
-  const [frameRate, setFrameRate] = useState(0);
-  const [fingerCount, setFingerCount] = useState(0);
-  const [scantime, setScantime] = useState(0);
-  const [keyState, setKeyState] = useState(0);
-  const [activeFingers, setActiveFingers] = useState<FingerSlot[]>([]);
+  // Stats state for display - batch all state updates
+  const [stats, setStats] = useState({
+    frameRate: 0,
+    fingerCount: 0,
+    scantime: 0,
+    keyState: 0,
+    activeFingers: [] as FingerSlot[],
+  });
 
   const lastScantimeRef = useRef<number>(0);
-  const lastFrameRef = useRef<FingerFrame | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
 
   // Draw function
   const draw = useCallback(() => {
@@ -105,75 +107,54 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
 
     // Calculate frame rate from scantime (units of 100us, range 0-65535)
     const currentScantime = frame.scantime;
+    let frameRate = 0;
     if (lastScantimeRef.current > 0) {
       let delta = currentScantime - lastScantimeRef.current;
-      // Handle overflow (scantime wraps from 65535 to 0)
-      if (delta < 0) {
-        delta += 65536;
-      }
-      // scantime is in 100us units, so interval_ms = delta * 100 / 1000 = delta / 10
+      if (delta < 0) delta += 65536;
       if (delta > 0) {
         const intervalMs = delta / 10;
-        setFrameRate(Math.round(1000 / intervalMs));
+        frameRate = Math.round(1000 / intervalMs);
       }
     }
     lastScantimeRef.current = currentScantime;
-    lastFrameRef.current = frame;
 
-    // Filter active fingers (valid coordinates and touch state)
-    const active = frame.slots.filter(slot =>
-      !(slot.x === 0 && slot.y === 0) &&
-      (slot.state === TouchState.FingerTouch || slot.state === TouchState.LargeTouch)
-    );
-
-    // Update display state - only show if there are active fingers
-    if (active.length > 0) {
-      setFingerCount(active.length);
-      setScantime(frame.scantime);
-      setKeyState(frame.keyState ?? 0);
-      setActiveFingers(active);
-    } else {
-      // No active fingers, clear display
-      setFingerCount(0);
-      setScantime(0);
-      setKeyState(0);
-      setActiveFingers([]);
-    }
-
-    // Process finger slots
+    // Process finger slots first
     for (const slot of frame.slots) {
       const { fingerId, state, x, y } = slot;
-
-      // Skip if coordinates are invalid (0,0 is typically a placeholder)
       if (x === 0 && y === 0) continue;
 
       if (state === TouchState.FingerRelease || state === TouchState.LargeRelease) {
-        // Clear trajectory on release
         trajectories.delete(fingerId);
       } else if (state === TouchState.FingerTouch || state === TouchState.LargeTouch) {
-        // Add point to trajectory
         let trajectory = trajectories.get(fingerId);
         if (!trajectory) {
           trajectory = { fingerId, points: [] };
           trajectories.set(fingerId, trajectory);
         }
         trajectory.points.push({ x, y, state });
-
-        // Limit trajectory length
         if (trajectory.points.length > 1000) {
           trajectory.points = trajectory.points.slice(-500);
         }
       }
     }
 
-    // Schedule draw using requestAnimationFrame
-    if (animationFrameRef.current !== null) {
-      cancelAnimationFrame(animationFrameRef.current);
-    }
-    animationFrameRef.current = requestAnimationFrame(() => {
-      animationFrameRef.current = null;
-      draw();
+    // Filter active fingers for display
+    const active = frame.slots.filter(slot =>
+      !(slot.x === 0 && slot.y === 0) &&
+      (slot.state === TouchState.FingerTouch || slot.state === TouchState.LargeTouch)
+    );
+
+    // Batch update state and draw immediately
+    setStats({
+      frameRate,
+      fingerCount: active.length,
+      scantime: active.length > 0 ? frame.scantime : 0,
+      keyState: active.length > 0 ? (frame.keyState ?? 0) : 0,
+      activeFingers: active,
     });
+
+    // Draw immediately for lowest latency
+    draw();
   }, [draw]);
 
   // Set up canvas size and subscriptions
@@ -226,7 +207,7 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
         style={{ display: 'block', background: '#1e1e1e' }}
       />
       {/* Key Down indicator */}
-      {keyState === 1 && (
+      {stats.keyState === 1 && (
         <div
           style={{
             position: 'absolute',
@@ -260,16 +241,16 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
         }}
       >
         <div style={{ color: '#6a9955', fontWeight: 600, marginBottom: 4 }}>
-          {frameRate} Hz
+          {stats.frameRate} Hz
         </div>
-        <div>Finger Count: {fingerCount}</div>
-        <div>ScanTime: {scantime}</div>
-        <div>Key State: {keyState}</div>
+        <div>Finger Count: {stats.fingerCount}</div>
+        <div>ScanTime: {stats.scantime}</div>
+        <div>Key State: {stats.keyState}</div>
         <div style={{ marginTop: 4, borderTop: '1px solid #3c3c3c', paddingTop: 4 }}>
-          {activeFingers.length === 0 ? (
+          {stats.activeFingers.length === 0 ? (
             <div style={{ color: '#858585' }}>No active fingers</div>
           ) : (
-            activeFingers.map((slot) => (
+            stats.activeFingers.map((slot) => (
               <div key={slot.fingerId} style={{ color: FINGER_COLORS[slot.fingerId % FINGER_COLORS.length] }}>
                 Finger {slot.fingerId}: X={slot.x} Y={slot.y} [{stateNames[slot.state]}]
               </div>
