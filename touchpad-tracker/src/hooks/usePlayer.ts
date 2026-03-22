@@ -3,7 +3,7 @@ import { FingerFrame } from '../types/finger';
 import { RecordingFile } from '../types/recording';
 import { parseSaleaeCSV } from '../utils/parseSaleaeTXT';
 
-export type PlaybackSpeed = 0.25 | 0.5 | 1 | 2 | 4;
+export type PlaybackSpeed = number;
 
 export interface UsePlayerReturn {
   isPlaying: boolean;
@@ -29,7 +29,7 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [totalFrames, setTotalFrames] = useState(0);
-  const [speed, setSpeedState] = useState<PlaybackSpeed>(1);
+  const [speed, setSpeedState] = useState<PlaybackSpeed>(60);
   const [isLoaded, setIsLoaded] = useState(false);
 
   const framesRef = useRef<FingerFrame[]>([]);
@@ -171,20 +171,9 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
         });
       };
 
-      // Calculate interval based on speed and scantime
-      const frame = framesRef.current[currentFrameIndex];
-      if (frame) {
-        let interval: number;
-        if (lastScantimeRef.current > 0) {
-          let delta = frame.scantime - lastScantimeRef.current;
-          if (delta < 0) delta += 65536;
-          interval = delta / 10 / speed; // delta in 100us, convert to ms
-        } else {
-          interval = 1000 / speed; // fallback: 1 second
-        }
-        lastScantimeRef.current = frame.scantime;
-        intervalRef.current = window.setTimeout(advanceFrame, Math.max(interval, 1));
-      }
+      // Calculate interval based on Hz
+      const interval = 1000 / speed; // Hz to interval in ms
+      intervalRef.current = window.setTimeout(advanceFrame, Math.max(interval, 1));
 
       return () => {
         if (intervalRef.current) {

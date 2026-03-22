@@ -13,8 +13,6 @@ interface PlaybackControlsProps {
   onSpeedChange: (speed: number) => void;
 }
 
-const SPEED_OPTIONS = [0.25, 0.5, 1, 2, 4];
-
 const PlaybackControls: React.FC<PlaybackControlsProps> = ({
   isPlaying,
   currentFrame,
@@ -145,26 +143,27 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
         {currentFrame} / {totalFrames}
       </div>
 
-      {/* Speed selector */}
-      <select
-        value={speed}
-        onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
-        style={{
-          background: '#3c3c3c',
-          color: '#d4d4d4',
-          border: 'none',
-          borderRadius: 4,
-          padding: '4px 8px',
-          fontSize: 12,
-          cursor: 'pointer',
-        }}
-      >
-        {SPEED_OPTIONS.map((s) => (
-          <option key={s} value={s}>
-            {s}x
-          </option>
-        ))}
-      </select>
+      {/* Speed input (Hz) */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <input
+          type="number"
+          min={10}
+          max={500}
+          value={speed}
+          onChange={(e) => onSpeedChange(Math.max(10, Math.min(500, parseInt(e.target.value) || 10)))}
+          style={{
+            width: 60,
+            background: '#3c3c3c',
+            color: '#d4d4d4',
+            border: 'none',
+            borderRadius: 4,
+            padding: '4px 8px',
+            fontSize: 12,
+            fontFamily: 'monospace',
+          }}
+        />
+        <span style={{ fontSize: 11, color: '#858585' }}>Hz</span>
+      </div>
     </div>
   );
 };
