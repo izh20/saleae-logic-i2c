@@ -5,6 +5,7 @@ import PlaybackControls from './components/PlaybackControls';
 import { TouchpadConfig, DEFAULT_CONFIG, FingerFrame } from './types/finger';
 import { useRecorder } from './hooks/useRecorder';
 import { usePlayer, PlaybackSpeed } from './hooks/usePlayer';
+import { parseSaleaeCSV } from './utils/parseSaleaeTXT';
 
 const App: React.FC = () => {
   const [config, setConfig] = useState<TouchpadConfig>(DEFAULT_CONFIG);
@@ -13,6 +14,7 @@ const App: React.FC = () => {
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [totalFrames, setTotalFrames] = useState(0);
   const [playbackFrame, setPlaybackFrame] = useState<FingerFrame | null>(null);
+  const [i2cAddress, setI2cAddress] = useState<string>('0x2C');
 
   // Ref to hold the callback for sending frames to TrajectoryView
   const trajectoriesCallbackRef = useRef<(frame: FingerFrame) => void | null>(null);
@@ -167,6 +169,16 @@ const App: React.FC = () => {
     setConfig(prev => ({ ...prev, maxY }));
   };
 
+  const handleI2cAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const addr = e.target.value;
+    setI2cAddress(addr);
+    // Parse and set the address
+    const addrNum = addr.startsWith('0x') ? parseInt(addr, 16) : parseInt(addr, 10);
+    if (!isNaN(addrNum)) {
+      parseSaleaeCSV.setAddresses([addrNum]);
+    }
+  };
+
   return (
     <div
       style={{
@@ -295,6 +307,14 @@ const App: React.FC = () => {
 
         {/* Resolution config */}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <label style={{ fontSize: 12 }}>
+            I2C Addr: <input
+              type="text"
+              value={i2cAddress}
+              onChange={handleI2cAddressChange}
+              style={{ width: 60, background: '#3c3c3c', color: '#d4d4d4', border: 'none', padding: '2px 4px', borderRadius: 2 }}
+            />
+          </label>
           <button
             onClick={handleOpenFile}
             style={{

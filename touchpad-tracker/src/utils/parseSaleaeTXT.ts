@@ -8,6 +8,20 @@ function parseHexOrDec(val: string): number {
   return parseInt(val, 10);
 }
 
+// Supported I2C addresses for touchpad (configurable)
+const DEFAULT_ADDRESSES = [0x2C, 0x15, 0x5D];
+export const parseSaleaeCSV = {
+  supportedAddresses: [...DEFAULT_ADDRESSES],
+
+  setAddresses(addresses: number[]) {
+    this.supportedAddresses = addresses;
+  },
+
+  resetAddresses() {
+    this.supportedAddresses = [...DEFAULT_ADDRESSES];
+  }
+};
+
 // Parse I2C data array to finger frame
 function parseFingerFrameFromData(data: string[], timestamp: number): FingerFrame | null {
   if (data.length < 3) return null;
@@ -117,10 +131,11 @@ export function parseSaleaeCSV(content: string): FingerFrame[] {
     const data = parts[3].trim();
     const rw = parts[4].trim();
 
-    // Filter I2C addresses - accept 0x2C, 0x2D, 0x2E, 0x2F (common touchpad addresses)
+    // Filter I2C addresses - accept configurable addresses
+    // Default supported: 0x2C, 0x15, 0x5D
     const addrNum = parseHexOrDec(address);
-    const isValidAddr = (addrNum >= 0x2C && addrNum <= 0x2F) || addrNum === 0x34;
-    if (!isValidAddr || rw !== 'Read') continue;
+    const supportedAddrs = parseSaleaeCSV.supportedAddresses;
+    if (!supportedAddrs.includes(addrNum) || rw !== 'Read') continue;
 
     allData.push(data);
     allTimes.push(time);
