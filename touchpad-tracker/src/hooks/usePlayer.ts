@@ -121,12 +121,8 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
 
   const stepBackward = useCallback(() => {
     const prevIndex = Math.max(currentFrameIndex - 1, 0);
-    // If going backward, rebuild trajectories from 0 to prevIndex
-    if (prevIndex < currentFrameIndex) {
-      rebuildTrajectories(prevIndex);
-    }
     seek(prevIndex, true);
-  }, [currentFrameIndex, seek, rebuildTrajectories]);
+  }, [currentFrameIndex, seek]);
 
   const play = useCallback(() => {
     if (framesRef.current.length === 0) return;
