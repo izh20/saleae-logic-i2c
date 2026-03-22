@@ -165,9 +165,9 @@ ipcMain.handle('load-recording', async () => {
   const result = await dialog.showOpenDialog(mainWindow!, {
     title: 'Open Recording',
     filters: [
+      { name: 'All Files', extensions: ['*'] },
       { name: 'Recording Files', extensions: ['json'] },
-      { name: 'Saleae Export Files', extensions: ['txt', 'csv'] },
-      { name: 'All Files', extensions: ['*'] }
+      { name: 'Saleae Export Files', extensions: ['txt', 'csv'] }
     ],
     properties: ['openFile']
   });
