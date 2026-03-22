@@ -67,7 +67,7 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame }) => 
         }
 
         // Draw point as circle
-        const radius = pt.state === TouchState.LargeTouch ? 6 : 2;
+        const radius = pt.state === TouchState.LargeTouch ? 4 : 2;
         ctx.beginPath();
         ctx.arc(x, y, radius, 0, Math.PI * 2);
         ctx.fillStyle = color;
