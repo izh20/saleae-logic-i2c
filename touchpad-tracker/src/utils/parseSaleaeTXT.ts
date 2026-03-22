@@ -90,15 +90,19 @@ function parseFingerFrameFromData(data: string[], timestamp: number): FingerFram
  * 1.555302937500000,0,0x2C,0x20,Read,ACK
  * 1.555347500000000,0,0x2C,0x00,Read,ACK
  * ...
+ *
+ * Each line is ONE BYTE of data. We need to:
+ * 1. Collect all data bytes in order
+ * 2. Scan for frame headers (0x2F 0x00 0x04 or 0x20 0x00 0x04)
+ * 3. Parse each frame
  */
 export function parseSaleaeCSV(content: string): FingerFrame[] {
   const frames: FingerFrame[] = [];
   const lines = content.split('\n');
 
-  console.log('parseSaleaeCSV: total lines:', lines.length);
-
-  // Group data bytes by Packet ID
-  const packetMap = new Map<string, { time: number; address: string; data: string[] }>();
+  // Collect all I2C data bytes in order
+  const allData: string[] = [];
+  const allTimes: number[] = [];
 
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -109,7 +113,6 @@ export function parseSaleaeCSV(content: string): FingerFrame[] {
     if (parts.length < 5) continue;
 
     const time = parseFloat(parts[0]);
-    const packetId = parts[1].trim();
     const address = parts[2].trim();
     const data = parts[3].trim();
     const rw = parts[4].trim();
@@ -117,32 +120,48 @@ export function parseSaleaeCSV(content: string): FingerFrame[] {
     // Filter I2C address 0x2C, Read operations
     if (address !== '0x2C' || rw !== 'Read') continue;
 
-    if (!packetMap.has(packetId)) {
-      packetMap.set(packetId, { time, address, data: [] });
-    }
-    packetMap.get(packetId)!.data.push(data);
+    allData.push(data);
+    allTimes.push(time);
   }
 
-  console.log('parseSaleaeCSV: packets found:', packetMap.size);
-  console.log('parseSaleaeCSV: first packet data length:', packetMap.get('0')?.data.length);
+  console.log('parseSaleaeCSV: total data bytes collected:', allData.length);
 
-  // Parse each packet
-  for (const [packetId, packet] of packetMap) {
-    const { time, data } = packet;
-    console.log(`parseSaleaeCSV: parsing packet ${packetId}, data length:`, data.length);
-    if (data.length < 3) continue;
+  // Scan for frame headers and parse frames
+  let i = 0;
+  let frameIndex = 0;
+  while (i < allData.length - 3) {
+    const byte0 = parseHexOrDec(allData[i]);
+    const byte1 = parseHexOrDec(allData[i + 1]);
+    const byte2 = parseHexOrDec(allData[i + 2]);
 
-    // Convert data strings to hex format for parseFingerFrameFromData
-    const frame = parseFingerFrameFromData(data, time);
-    if (frame) {
-      console.log(`parseSaleaeCSV: packet ${packetId} parsed successfully, fingerCount:`, frame.fingerCount);
-      frames.push(frame);
+    const is47Byte = byte0 === 0x2F && byte1 === 0x00 && byte2 === 0x04;
+    const is32Byte = byte0 === 0x20 && byte1 === 0x00 && byte2 === 0x04;
+
+    if (is47Byte || is32Byte) {
+      const packetType: 47 | 32 = is47Byte ? 47 : 32;
+      const frameLen = packetType;
+      const endIdx = i + frameLen;
+
+      if (endIdx <= allData.length) {
+        const frameData = allData.slice(i, endIdx);
+        const timestamp = allTimes[i] || 0;
+        const frame = parseFingerFrameFromData(frameData, timestamp);
+
+        if (frame) {
+          frames.push(frame);
+          console.log(`parseSaleaeCSV: parsed frame ${frameIndex} at byte ${i}, type ${packetType}, fingerCount: ${frame.fingerCount}`);
+        }
+        i = endIdx;
+        frameIndex++;
+      } else {
+        i++;
+      }
     } else {
-      console.log(`parseSaleaeCSV: packet ${packetId} parse returned null`);
+      i++;
     }
   }
 
-  console.log('parseSaleaeCSV: total frames:', frames.length);
+  console.log('parseSaleaeCSV: total frames parsed:', frames.length);
   return frames;
 }
 
