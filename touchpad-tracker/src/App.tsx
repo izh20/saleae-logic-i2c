@@ -1,11 +1,38 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import TrajectoryView from './components/TrajectoryView';
-import { TouchpadConfig, DEFAULT_CONFIG } from './types/finger';
+import PlaybackControls from './components/PlaybackControls';
+import { TouchpadConfig, DEFAULT_CONFIG, FingerFrame } from './types/finger';
+import { useRecorder } from './hooks/useRecorder';
+import { usePlayer, PlaybackSpeed } from './hooks/usePlayer';
 
 const App: React.FC = () => {
   const [config, setConfig] = useState<TouchpadConfig>(DEFAULT_CONFIG);
   const [connected, setConnected] = useState(false);
+  const [playbackMode, setPlaybackMode] = useState(false);
+  const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
+  const [totalFrames, setTotalFrames] = useState(0);
 
+  // Ref to hold the callback for sending frames to TrajectoryView
+  const trajectoriesCallbackRef = useRef<(frame: FingerFrame) => void | null>(null);
+
+  // Recorder hook
+  const { isRecording, startRecording, stopRecording, addFrame } = useRecorder();
+
+  // Player hook
+  const handlePlaybackFrame = useCallback((frame: FingerFrame) => {
+    if (trajectoriesCallbackRef.current) {
+      trajectoriesCallbackRef.current(frame);
+    }
+  }, []);
+
+  const player = usePlayer(handlePlaybackFrame);
+
+  // Set up the frame callback for TrajectoryView
+  const handleTrajectoryViewRef = useCallback((callback: (frame: FingerFrame) => void) => {
+    trajectoriesCallbackRef.current = callback;
+  }, []);
+
+  // Handle live frames from UDP
   useEffect(() => {
     // Load configuration from main process
     window.electronAPI.getConfig().then((cfg) => {
@@ -17,6 +44,16 @@ const App: React.FC = () => {
     const unsubscribe = window.electronAPI.onFingerFrame((frame) => {
       console.log('Renderer received finger frame:', frame);
       setConnected(true);
+
+      // In live mode, send frame to TrajectoryView
+      if (!playbackMode && trajectoriesCallbackRef.current) {
+        trajectoriesCallbackRef.current(frame);
+      }
+
+      // In recording mode, add frame to recording
+      if (isRecording) {
+        addFrame(frame);
+      }
     });
 
     // Set connected to true after 1 second if we haven't received data yet
@@ -28,7 +65,57 @@ const App: React.FC = () => {
       unsubscribe();
       clearTimeout(timeout);
     };
-  }, []);
+  }, [playbackMode, isRecording, addFrame]);
+
+  // Handle open file (load recording)
+  const handleOpenFile = async () => {
+    const result = await window.electronAPI.loadRecording();
+    if (result) {
+      const loaded = player.loadRecording(result.content);
+      if (loaded) {
+        setPlaybackMode(true);
+        setTotalFrames(player.totalFrames);
+        setCurrentFrameIndex(0);
+        // Send first frame
+        const frame = player.getCurrentFrame();
+        if (frame && trajectoriesCallbackRef.current) {
+          trajectoriesCallbackRef.current(frame);
+        }
+      }
+    }
+  };
+
+  // Handle stop recording
+  const handleStopRecording = async () => {
+    const filePath = await stopRecording();
+    if (filePath) {
+      console.log('Recording saved to:', filePath);
+    }
+  };
+
+  // Handle REC button click
+  const handleRecClick = () => {
+    if (isRecording) {
+      handleStopRecording();
+    } else {
+      if (playbackMode) {
+        setPlaybackMode(false);
+        player.pause();
+      }
+      startRecording(config);
+    }
+  };
+
+  // Handle PLAY button click
+  const handlePlayClick = () => {
+    if (playbackMode) {
+      if (player.isPlaying) {
+        player.pause();
+      } else {
+        player.play();
+      }
+    }
+  };
 
   const handleMaxXChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const maxX = parseInt(e.target.value) || 1920;
@@ -78,8 +165,88 @@ const App: React.FC = () => {
           {connected ? 'UDP Connected' : 'Waiting for data...'}
         </span>
 
+        {/* Recording indicator dot */}
+        {isRecording && (
+          <div style={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: '#f14c4c',
+            marginRight: 4,
+          }} />
+        )}
+
+        {/* REC button */}
+        <button
+          onClick={handleRecClick}
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 4,
+            border: 'none',
+            background: isRecording ? '#f14c4c' : '#3c3c3c',
+            color: isRecording ? '#fff' : '#d4d4d4',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 12,
+            fontWeight: 600,
+          }}
+        >
+          REC
+        </button>
+
+        {/* PLAY button */}
+        <button
+          onClick={handlePlayClick}
+          disabled={!playbackMode}
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 4,
+            border: 'none',
+            background: playbackMode ? '#3c3c3c' : '#2d2d2d',
+            color: playbackMode ? '#d4d4d4' : '#5a5a5a',
+            cursor: playbackMode ? 'pointer' : 'not-allowed',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 12,
+            fontWeight: 600,
+          }}
+        >
+          PLAY
+        </button>
+
+        {/* Recording/Playback status */}
+        {isRecording && (
+          <span style={{ fontSize: 12, color: '#f14c4c' }}>
+            Recording...
+          </span>
+        )}
+        {playbackMode && (
+          <span style={{ fontSize: 12, color: '#6a9955' }}>
+            Playback Mode
+          </span>
+        )}
+
         {/* Resolution config */}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            onClick={handleOpenFile}
+            style={{
+              padding: '4px 12px',
+              borderRadius: 4,
+              border: 'none',
+              background: '#3c3c3c',
+              color: '#d4d4d4',
+              cursor: 'pointer',
+              fontSize: 12,
+            }}
+          >
+            Open File
+          </button>
           <label style={{ fontSize: 12 }}>
             Max X: <input
               type="number"
@@ -101,8 +268,27 @@ const App: React.FC = () => {
 
       {/* Main content */}
       <main style={{ flex: 1, overflow: 'hidden' }}>
-        <TrajectoryView config={config} />
+        <TrajectoryView config={config} onFrameRef={handleTrajectoryViewRef} />
       </main>
+
+      {/* Playback controls - shown when in playback mode */}
+      {playbackMode && (
+        <PlaybackControls
+          isPlaying={player.isPlaying}
+          currentFrame={player.currentFrameIndex}
+          totalFrames={player.totalFrames}
+          speed={player.speed}
+          onPlay={player.play}
+          onPause={player.pause}
+          onStepForward={player.stepForward}
+          onStepBackward={player.stepBackward}
+          onSeek={(frame) => {
+            player.seek(frame);
+            setCurrentFrameIndex(frame);
+          }}
+          onSpeedChange={(speed) => player.setSpeed(speed as PlaybackSpeed)}
+        />
+      )}
     </div>
   );
 };
