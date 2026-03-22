@@ -117,8 +117,10 @@ export function parseSaleaeCSV(content: string): FingerFrame[] {
     const data = parts[3].trim();
     const rw = parts[4].trim();
 
-    // Filter I2C address 0x2C, Read operations
-    if (address !== '0x2C' || rw !== 'Read') continue;
+    // Filter I2C addresses - accept 0x2C, 0x2D, 0x2E, 0x2F (common touchpad addresses)
+    const addrNum = parseHexOrDec(address);
+    const isValidAddr = (addrNum >= 0x2C && addrNum <= 0x2F) || addrNum === 0x34;
+    if (!isValidAddr || rw !== 'Read') continue;
 
     allData.push(data);
     allTimes.push(time);
