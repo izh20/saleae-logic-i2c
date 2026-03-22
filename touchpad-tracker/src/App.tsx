@@ -16,6 +16,8 @@ const App: React.FC = () => {
 
   // Ref to hold the callback for sending frames to TrajectoryView
   const trajectoriesCallbackRef = useRef<(frame: FingerFrame) => void | null>(null);
+  // Ref to hold the clear callback for PlaybackView
+  const playbackClearRef = useRef<(() => void) | null>(null);
 
   // Recorder hook
   const { isRecording, startRecording, stopRecording, addFrame } = useRecorder();
@@ -26,6 +28,13 @@ const App: React.FC = () => {
   }, []);
 
   const player = usePlayer(handlePlaybackFrame);
+
+  // Register clear callback with player
+  useEffect(() => {
+    if (playbackClearRef.current) {
+      player.setClearCallback(playbackClearRef.current);
+    }
+  }, [player]);
 
   // Set up the frame callback for TrajectoryView
   const handleTrajectoryViewRef = useCallback((callback: (frame: FingerFrame) => void) => {
@@ -331,7 +340,7 @@ const App: React.FC = () => {
       {/* Main content */}
       <main style={{ flex: 1, overflow: 'hidden' }}>
         {playbackMode ? (
-          <PlaybackView config={config} currentFrame={playbackFrame} />
+          <PlaybackView config={config} currentFrame={playbackFrame} onClearRef={(cb) => { playbackClearRef.current = cb; }} />
         ) : (
           <TrajectoryView config={config} onFrameRef={handleTrajectoryViewRef} />
         )}

@@ -10,12 +10,26 @@ import {
 interface PlaybackViewProps {
   config: TouchpadConfig;
   currentFrame: FingerFrame | null;
+  onClearRef?: (callback: () => void) => void;
 }
 
-const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame }) => {
+const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onClearRef }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const trajectoriesRef = useRef<Map<number, FingerTrajectory>>(new Map());
   const animationFrameRef = useRef<number | null>(null);
+
+  // Clear trajectories function
+  const clearTrajectories = useCallback(() => {
+    trajectoriesRef.current.clear();
+    draw();
+  }, [draw]);
+
+  // Register clear callback if provided
+  useEffect(() => {
+    if (onClearRef) {
+      onClearRef(clearTrajectories);
+    }
+  }, [onClearRef, clearTrajectories]);
 
   // Stats state for display
   const [frameRate, setFrameRate] = useState(0);

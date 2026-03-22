@@ -19,6 +19,8 @@ export interface UsePlayerReturn {
   seek: (index: number) => void;
   setSpeed: (speed: PlaybackSpeed) => void;
   getCurrentFrame: () => FingerFrame | null;
+  rebuildTrajectories: () => void;
+  setClearCallback: (callback: () => void) => void;
 }
 
 export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerReturn {
@@ -31,6 +33,28 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
   const framesRef = useRef<FingerFrame[]>([]);
   const intervalRef = useRef<number | null>(null);
   const lastScantimeRef = useRef<number>(0);
+  const clearCallbackRef = useRef<(() => void) | null>(null);
+
+  // Rebuild trajectories by replaying all frames from 0 to current index
+  const rebuildTrajectories = useCallback(() => {
+    const frames = framesRef.current;
+    const targetIndex = currentFrameIndex;
+    if (frames.length === 0 || targetIndex < 0) return;
+
+    // Clear trajectories first
+    if (clearCallbackRef.current) {
+      clearCallbackRef.current();
+    }
+
+    // Replay all frames from 0 to current index to rebuild trajectories
+    for (let i = 0; i <= targetIndex; i++) {
+      onFrame(frames[i]);
+    }
+  }, [currentFrameIndex, onFrame]);
+
+  const setClearCallback = useCallback((callback: () => void) => {
+    clearCallbackRef.current = callback;
+  }, []);
 
   const loadRecording = useCallback((content: string): boolean => {
     // Debug: check content format
@@ -88,11 +112,17 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
 
   const stepBackward = useCallback(() => {
     const prevIndex = Math.max(currentFrameIndex - 1, 0);
+    // If going backward, signal trajectory rebuild
+    if (prevIndex < currentFrameIndex) {
+      rebuildTrajectories();
+    }
     seek(prevIndex);
-  }, [currentFrameIndex, seek]);
+  }, [currentFrameIndex, seek, rebuildTrajectories]);
 
   const play = useCallback(() => {
     if (framesRef.current.length === 0) return;
+    // Reset lastScantimeRef to avoid delta=0 issue when resuming
+    lastScantimeRef.current = 0;
     setIsPlaying(true);
   }, []);
 
@@ -164,5 +194,7 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
     seek,
     setSpeed,
     getCurrentFrame,
+    rebuildTrajectories,
+    setClearCallback,
   };
 }
