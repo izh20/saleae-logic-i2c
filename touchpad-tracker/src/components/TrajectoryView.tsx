@@ -47,23 +47,45 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config }) => {
 
       const color = FINGER_COLORS[fingerId % FINGER_COLORS.length];
 
-      // Draw line for all points
-      ctx.beginPath();
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
+      // Draw line segments grouped by state
+      // Group points by state to use different line widths
+      let segmentStart = 0;
+      let currentState = trajectory.points[0].state;
 
-      trajectory.points.forEach((pt, i) => {
-        const canvasX = (pt.x / maxX) * canvas.width;
-        const canvasY = (pt.y / maxY) * canvas.height;
-        if (i === 0) {
-          ctx.moveTo(canvasX, canvasY);
-        } else {
-          ctx.lineTo(canvasX, canvasY);
+      for (let i = 1; i <= trajectory.points.length; i++) {
+        const pt = trajectory.points[i];
+        const sameState = pt && pt.state === currentState;
+
+        if (i === trajectory.points.length || !sameState) {
+          // Draw segment from segmentStart to i-1
+          const lineWidth = currentState === TouchState.LargeTouch ? 8 : 2;
+          ctx.beginPath();
+          ctx.strokeStyle = color;
+          ctx.lineWidth = lineWidth;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+
+          const startPt = trajectory.points[segmentStart];
+          ctx.moveTo(
+            (startPt.x / maxX) * canvas.width,
+            (startPt.y / maxY) * canvas.height
+          );
+
+          for (let j = segmentStart + 1; j < i; j++) {
+            const p = trajectory.points[j];
+            ctx.lineTo(
+              (p.x / maxX) * canvas.width,
+              (p.y / maxY) * canvas.height
+            );
+          }
+          ctx.stroke();
+
+          if (i < trajectory.points.length) {
+            segmentStart = i;
+            currentState = pt.state;
+          }
         }
-      });
-      ctx.stroke();
+      }
 
       // Draw end point as circle
       const lastPt = trajectory.points[trajectory.points.length - 1];
@@ -120,7 +142,7 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config }) => {
           trajectory = { fingerId, points: [] };
           trajectories.set(fingerId, trajectory);
         }
-        trajectory.points.push({ x, y });
+        trajectory.points.push({ x, y, state });
 
         // Limit trajectory length
         if (trajectory.points.length > 1000) {
@@ -177,6 +199,25 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config }) => {
         ref={canvasRef}
         style={{ display: 'block', background: '#1e1e1e' }}
       />
+      {/* Key Down indicator */}
+      {keyState === 1 && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 10,
+            right: 10,
+            background: '#f14c4c',
+            color: '#fff',
+            padding: '4px 12px',
+            borderRadius: 4,
+            fontSize: 12,
+            fontWeight: 600,
+            fontFamily: 'monospace',
+          }}
+        >
+          KEY DOWN
+        </div>
+      )}
       {/* Top-left info panel */}
       <div
         style={{

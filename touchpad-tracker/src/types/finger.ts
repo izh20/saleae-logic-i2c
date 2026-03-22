@@ -6,8 +6,8 @@ export interface TouchpadConfig {
 
 // Default configuration
 export const DEFAULT_CONFIG: TouchpadConfig = {
-  maxX: 1920,
-  maxY: 1080,
+  maxX: 3000,
+  maxY: 2000,
 };
 
 // Finger slot data structure
@@ -31,16 +31,17 @@ export interface FingerFrame {
   keyState?: number;
 }
 
-// Point for trajectory rendering
-export interface Point {
+// Point for trajectory rendering with touch state
+export interface TrajectoryPoint {
   x: number;
   y: number;
+  state: number; // 0-3, TouchState
 }
 
 // Finger trajectory history
 export interface FingerTrajectory {
   fingerId: number;
-  points: Point[];
+  points: TrajectoryPoint[];
 }
 
 // State machine for touch detection
