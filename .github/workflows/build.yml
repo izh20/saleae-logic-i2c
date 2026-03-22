@@ -31,19 +31,18 @@ jobs:
           cache-dependency-path: touchpad-tracker/package-lock.json
 
       - name: Install dependencies
-        working-directory: touchpad-tracker
         run: npm ci
+        working-directory: touchpad-tracker
 
       - name: Build application
-        working-directory: touchpad-tracker
         run: npm run make
+        working-directory: touchpad-tracker
 
       - name: Upload artifacts
-        working-directory: touchpad-tracker
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_prefix }}-touchpad-tracker
           path: |
-            out/make/**
-            out/package/**
+            touchpad-tracker/out/make/**
+            touchpad-tracker/out/package/**
           retention-days: 7
