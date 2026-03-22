@@ -331,7 +331,7 @@ const App: React.FC = () => {
       {/* Main content */}
       <main style={{ flex: 1, overflow: 'hidden' }}>
         {playbackMode ? (
-          <PlaybackView config={config} currentFrame={playbackFrame} onClearRef={player.setClearCallback} onStepModeRef={player.setStepModeCallback} />
+          <PlaybackView config={config} currentFrame={playbackFrame} onClearRef={player.setClearCallback} onStepModeRef={player.setStepModeCallback} onDirectFrameRef={player.setDirectFrameCallback} />
         ) : (
           <TrajectoryView config={config} onFrameRef={handleTrajectoryViewRef} />
         )}

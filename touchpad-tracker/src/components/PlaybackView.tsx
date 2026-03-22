@@ -12,9 +12,10 @@ interface PlaybackViewProps {
   currentFrame: FingerFrame | null;
   onClearRef?: (callback: () => void) => void;
   onStepModeRef?: (callback: (isStepMode: boolean) => void) => void;
+  onDirectFrameRef?: (callback: (frame: FingerFrame) => void) => void;
 }
 
-const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onClearRef, onStepModeRef }) => {
+const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onClearRef, onStepModeRef, onDirectFrameRef }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const trajectoriesRef = useRef<Map<number, FingerTrajectory>>(new Map());
   const animationFrameRef = useRef<number | null>(null);
@@ -167,6 +168,13 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
       onStepModeRef((mode: boolean) => setIsStepMode(mode));
     }
   }, [onStepModeRef]);
+
+  // Register direct frame handler for rebuild - bypasses state for synchronous updates
+  useEffect(() => {
+    if (onDirectFrameRef) {
+      onDirectFrameRef(handleFrame);
+    }
+  }, [onDirectFrameRef, handleFrame]);
 
   // Expose handleFrame via a ref-like mechanism
   useEffect(() => {

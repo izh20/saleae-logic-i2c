@@ -22,6 +22,7 @@ export interface UsePlayerReturn {
   rebuildTrajectories: () => void;
   setClearCallback: (callback: () => void) => void;
   setStepModeCallback: (callback: (isStepMode: boolean) => void) => void;
+  setDirectFrameCallback: (callback: (frame: FingerFrame) => void) => void;
 }
 
 export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerReturn {
@@ -36,6 +37,7 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
   const lastScantimeRef = useRef<number>(0);
   const clearCallbackRef = useRef<(() => void) | null>(null);
   const stepModeCallbackRef = useRef<((isStepMode: boolean) => void) | null>(null);
+  const directFrameCallbackRef = useRef<((frame: FingerFrame) => void) | null>(null);
 
   // Rebuild trajectories by replaying all frames from 0 to target index
   const rebuildTrajectories = useCallback((targetIndex: number) => {
@@ -47,9 +49,12 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
       clearCallbackRef.current();
     }
 
+    // Use direct callback if available for synchronous updates
+    const frameHandler = directFrameCallbackRef.current || onFrame;
+
     // Replay all frames from 0 to target index to rebuild trajectories
     for (let i = 0; i <= targetIndex; i++) {
-      onFrame(frames[i]);
+      frameHandler(frames[i]);
     }
   }, [onFrame]);
 
@@ -59,6 +64,10 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
 
   const setStepModeCallback = useCallback((callback: (isStepMode: boolean) => void) => {
     stepModeCallbackRef.current = callback;
+  }, []);
+
+  const setDirectFrameCallback = useCallback((callback: (frame: FingerFrame) => void) => {
+    directFrameCallbackRef.current = callback;
   }, []);
 
   const loadRecording = useCallback((content: string): boolean => {
@@ -202,5 +211,6 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
     rebuildTrajectories,
     setClearCallback,
     setStepModeCallback,
+    setDirectFrameCallback,
   };
 }
