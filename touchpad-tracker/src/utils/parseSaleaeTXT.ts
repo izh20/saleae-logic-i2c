@@ -112,7 +112,11 @@ function parseFingerFrameFromData(data: string[], timestamp: number): FingerFram
  */
 export function parseSaleaeCSV(content: string): FingerFrame[] {
   const frames: FingerFrame[] = [];
-  const lines = content.split('\n');
+  // Handle both \n and \r\n line endings
+  const lines = content.split(/\r?\n/);
+
+  console.log('parseSaleaeCSV: total lines:', lines.length);
+  console.log('parseSaleaeCSV: supported addresses:', parseSaleaeCSV.supportedAddresses);
 
   // Collect all I2C data bytes in order
   const allData: string[] = [];
@@ -135,6 +139,7 @@ export function parseSaleaeCSV(content: string): FingerFrame[] {
     // Default supported: 0x2C, 0x15, 0x5D
     const addrNum = parseHexOrDec(address);
     const supportedAddrs = parseSaleaeCSV.supportedAddresses;
+    console.log(`parseSaleaeCSV: line ${i}, addr=${address}, addrNum=${addrNum}, supported=${JSON.stringify(supportedAddrs)}, match=${supportedAddrs.includes(addrNum)}`);
     if (!supportedAddrs.includes(addrNum) || rw !== 'Read') continue;
 
     allData.push(data);
