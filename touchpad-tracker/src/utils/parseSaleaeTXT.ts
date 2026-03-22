@@ -10,7 +10,9 @@ function parseHexOrDec(val: string): number {
 
 // Supported I2C addresses for touchpad (configurable)
 const DEFAULT_ADDRESSES = [0x2C, 0x15, 0x5D];
-export const parseSaleaeCSV = {
+
+// Create address manager
+const addressManager = {
   supportedAddresses: [...DEFAULT_ADDRESSES],
 
   setAddresses(addresses: number[]) {
@@ -21,6 +23,14 @@ export const parseSaleaeCSV = {
     this.supportedAddresses = [...DEFAULT_ADDRESSES];
   }
 };
+
+// Export parseSaleaeCSV as both a function and an object with methods
+export const parseSaleaeCSV = Object.assign(
+  function(content: string): FingerFrame[] {
+    return parseSaleaeCSVInternal(content, addressManager.supportedAddresses);
+  },
+  addressManager
+);
 
 // Parse I2C data array to finger frame
 function parseFingerFrameFromData(data: string[], timestamp: number): FingerFrame | null {
@@ -110,13 +120,12 @@ function parseFingerFrameFromData(data: string[], timestamp: number): FingerFram
  * 2. Scan for frame headers (0x2F 0x00 0x04 or 0x20 0x00 0x04)
  * 3. Parse each frame
  */
-export function parseSaleaeCSV(content: string): FingerFrame[] {
+function parseSaleaeCSVInternal(content: string, supportedAddrs: number[]): FingerFrame[] {
   const frames: FingerFrame[] = [];
   // Handle both \n and \r\n line endings
   const lines = content.split(/\r?\n/);
 
-  console.log('parseSaleaeCSV: total lines:', lines.length);
-  console.log('parseSaleaeCSV: supported addresses:', parseSaleaeCSV.supportedAddresses);
+  console.log('parseSaleaeCSV: total lines:', lines.length, 'supported addresses:', supportedAddrs);
 
   // Collect all I2C data bytes in order
   const allData: string[] = [];
@@ -138,8 +147,6 @@ export function parseSaleaeCSV(content: string): FingerFrame[] {
     // Filter I2C addresses - accept configurable addresses
     // Default supported: 0x2C, 0x15, 0x5D
     const addrNum = parseHexOrDec(address);
-    const supportedAddrs = parseSaleaeCSV.supportedAddresses;
-    console.log(`parseSaleaeCSV: line ${i}, addr=${address}, addrNum=${addrNum}, supported=${JSON.stringify(supportedAddrs)}, match=${supportedAddrs.includes(addrNum)}`);
     if (!supportedAddrs.includes(addrNum) || rw !== 'Read') continue;
 
     allData.push(data);
