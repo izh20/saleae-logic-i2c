@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'node:path';
 import dgram from 'node:dgram';
 import started from 'electron-squirrel-startup';
@@ -143,6 +143,40 @@ function startUdpServer() {
 // IPC handler for config
 ipcMain.handle('get-config', () => {
   return DEFAULT_CONFIG;
+});
+
+// IPC handler for saving recording
+ipcMain.handle('save-recording', async (_event, data: string) => {
+  const result = await dialog.showSaveDialog(mainWindow!, {
+    title: 'Save Recording',
+    defaultPath: `touchpad-recording-${Date.now()}.json`,
+    filters: [{ name: 'JSON Files', extensions: ['json'] }]
+  });
+  if (!result.canceled && result.filePath) {
+    const fs = await import('node:fs/promises');
+    await fs.writeFile(result.filePath, data, 'utf-8');
+    return result.filePath;
+  }
+  return null;
+});
+
+// IPC handler for loading recording
+ipcMain.handle('load-recording', async () => {
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    title: 'Open Recording',
+    filters: [
+      { name: 'Recording Files', extensions: ['json'] },
+      { name: 'Saleae TXT Files', extensions: ['txt'] },
+      { name: 'All Files', extensions: ['*'] }
+    ],
+    properties: ['openFile']
+  });
+  if (!result.canceled && result.filePaths.length > 0) {
+    const fs = await import('node:fs/promises');
+    const content = await fs.readFile(result.filePaths[0], 'utf-8');
+    return { path: result.filePaths[0], content };
+  }
+  return null;
 });
 
 const createWindow = () => {
