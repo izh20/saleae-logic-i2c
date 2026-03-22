@@ -120,11 +120,22 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
     lastScantimeRef.current = currentScantime;
     lastFrameRef.current = frame;
 
-    // Update display state
-    setFingerCount(frame.fingerCount);
-    setScantime(frame.scantime);
-    setKeyState(frame.keyState ?? 0);
-    setActiveFingers(frame.slots.filter(slot => !(slot.x === 0 && slot.y === 0)));
+    // Filter active fingers (valid coordinates)
+    const active = frame.slots.filter(slot => !(slot.x === 0 && slot.y === 0));
+
+    // Update display state - only show if there are active fingers
+    if (active.length > 0) {
+      setFingerCount(frame.fingerCount);
+      setScantime(frame.scantime);
+      setKeyState(frame.keyState ?? 0);
+      setActiveFingers(active);
+    } else {
+      // No active fingers, clear display
+      setFingerCount(0);
+      setScantime(0);
+      setKeyState(0);
+      setActiveFingers([]);
+    }
 
     // Process finger slots
     for (const slot of frame.slots) {
