@@ -259,6 +259,39 @@ const App: React.FC = () => {
           PLAY
         </button>
 
+        {/* Exit Playback button - shown only in playback mode */}
+        {playbackMode && (
+          <button
+            onClick={() => {
+              setPlaybackMode(false);
+              player.pause();
+              // Clear trajectories by sending an empty frame
+              if (trajectoriesCallbackRef.current) {
+                const emptyFrame: FingerFrame = {
+                  timestamp: 0,
+                  packetType: 47,
+                  slots: [],
+                  fingerCount: 0,
+                  scantime: 0,
+                  keyState: 0,
+                };
+                trajectoriesCallbackRef.current(emptyFrame);
+              }
+            }}
+            style={{
+              padding: '4px 12px',
+              borderRadius: 4,
+              border: 'none',
+              background: '#3c3c3c',
+              color: '#d4d4d4',
+              cursor: 'pointer',
+              fontSize: 12,
+            }}
+          >
+            Exit
+          </button>
+        )}
+
         {/* Recording/Playback status */}
         {isRecording && (
           <span style={{ fontSize: 12, color: '#f14c4c' }}>
@@ -313,28 +346,7 @@ const App: React.FC = () => {
 
       {/* Playback controls - shown when in playback mode */}
       {playbackMode && (
-        <>
-          <button
-            onClick={() => {
-              setPlaybackMode(false);
-              player.pause();
-            }}
-            style={{
-              position: 'absolute',
-              top: 10,
-              right: 10,
-              padding: '4px 12px',
-              borderRadius: 4,
-              border: 'none',
-              background: '#3c3c3c',
-              color: '#d4d4d4',
-              cursor: 'pointer',
-              fontSize: 12,
-            }}
-          >
-            Exit Playback
-          </button>
-          <PlaybackControls
+        <PlaybackControls
           isPlaying={player.isPlaying}
           currentFrame={player.currentFrameIndex}
           totalFrames={player.totalFrames}
@@ -348,8 +360,7 @@ const App: React.FC = () => {
             setCurrentFrameIndex(frame);
           }}
           onSpeedChange={(speed) => player.setSpeed(speed as PlaybackSpeed)}
-          />
-        </>
+        />
       )}
     </div>
   );
