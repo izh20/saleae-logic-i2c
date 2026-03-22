@@ -1,0 +1,13 @@
+{
+  "name": "I2C Real-time Exporter",
+  "apiVersion": "1.0.0",
+  "author": "Custom",
+  "version": "1.0.0",
+  "description": "Exports I2C data via UDP socket in real-time",
+  "extensions": {
+    "I2CRealtime": {
+      "type": "HighLevelAnalyzer",
+      "entryPoint": "i2c_realtime.I2CRealtime"
+    }
+  }
+}
