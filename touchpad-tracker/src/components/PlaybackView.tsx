@@ -207,9 +207,10 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame }) => 
           background: 'rgba(30,30,30,0.95)',
           padding: '6px 12px',
           display: 'flex',
-          gap: 20,
+          gap: 16,
           alignItems: 'center',
           borderBottom: '1px solid #3c3c3c',
+          flexWrap: 'wrap',
         }}
       >
         <div style={{ color: '#6a9955', fontWeight: 600 }}>
@@ -218,33 +219,15 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame }) => 
         <div>Fingers: {fingerCount}</div>
         <div>ScanTime: {scantime}</div>
         <div>Key: {keyState}</div>
+        {activeFingers.map((slot) => (
+          <div key={slot.fingerId} style={{ color: FINGER_COLORS[slot.fingerId % FINGER_COLORS.length] }}>
+            F{slot.fingerId}: X={slot.x} Y={slot.y}
+          </div>
+        ))}
         <div style={{ marginLeft: 'auto' }}>
           Max X: {config.maxX}, Max Y: {config.maxY}
         </div>
       </div>
-      {/* Active fingers detail panel */}
-      {activeFingers.length > 0 && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 34,
-            left: 10,
-            color: '#d4d4d4',
-            fontSize: 10,
-            fontFamily: 'monospace',
-            background: 'rgba(30,30,30,0.9)',
-            padding: '4px 8px',
-            borderRadius: 4,
-            lineHeight: 1.5,
-          }}
-        >
-          {activeFingers.map((slot) => (
-            <div key={slot.fingerId} style={{ color: FINGER_COLORS[slot.fingerId % FINGER_COLORS.length] }}>
-              Finger{slot.fingerId}: X={slot.x} Y={slot.y} [{stateNames[slot.state]}]
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 };
