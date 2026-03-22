@@ -254,6 +254,47 @@ cp -r i2c_hla ~/Library/Application\ Support/SaleaeLogic/Extensions/
 
 ---
 
+## 打包分享给他人
+
+### Windows 用户
+
+1. 在项目目录下运行打包命令：
+
+```bash
+cd touchpad-tracker
+npm run make
+```
+
+2. 打包完成后，可执行文件位于 `out/make/squirrel.windows/` 文件夹中
+
+3. 分发 `Touchpad Tracker.exe` 安装文件给其他人即可
+
+### macOS 用户
+
+```bash
+cd touchpad-tracker
+npm run make
+```
+
+打包完成后，安装文件位于 `out/make/zip/darwin/` 文件夹中
+
+### Linux 用户
+
+```bash
+cd touchpad-tracker
+npm run make
+```
+
+生成的文件位于 `out/make/zip/linux/` 文件夹中
+
+### 注意事项
+
+- 打包后无需安装 Node.js 或 npm，直接运行可执行文件即可
+- Windows 版本依赖 Squirrel 运行时，但安装后会自带
+- 打包前建议先测试 `npm run make` 是否成功
+
+---
+
 ## 通道配置
 
 | 信号 | 通道 |
