@@ -313,7 +313,28 @@ const App: React.FC = () => {
 
       {/* Playback controls - shown when in playback mode */}
       {playbackMode && (
-        <PlaybackControls
+        <>
+          <button
+            onClick={() => {
+              setPlaybackMode(false);
+              player.pause();
+            }}
+            style={{
+              position: 'absolute',
+              top: 10,
+              right: 10,
+              padding: '4px 12px',
+              borderRadius: 4,
+              border: 'none',
+              background: '#3c3c3c',
+              color: '#d4d4d4',
+              cursor: 'pointer',
+              fontSize: 12,
+            }}
+          >
+            Exit Playback
+          </button>
+          <PlaybackControls
           isPlaying={player.isPlaying}
           currentFrame={player.currentFrameIndex}
           totalFrames={player.totalFrames}
@@ -327,7 +348,8 @@ const App: React.FC = () => {
             setCurrentFrameIndex(frame);
           }}
           onSpeedChange={(speed) => player.setSpeed(speed as PlaybackSpeed)}
-        />
+          />
+        </>
       )}
     </div>
   );
