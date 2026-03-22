@@ -32,6 +32,30 @@ const App: React.FC = () => {
     trajectoriesCallbackRef.current = callback;
   }, []);
 
+  // Handle REC button click
+  const handleRecClick = () => {
+    if (isRecording) {
+      handleStopRecording();
+    } else {
+      if (playbackMode) {
+        setPlaybackMode(false);
+        player.pause();
+      }
+      startRecording(config);
+    }
+  };
+
+  // Handle PLAY button click
+  const handlePlayClick = () => {
+    if (playbackMode) {
+      if (player.isPlaying) {
+        player.pause();
+      } else {
+        player.play();
+      }
+    }
+  };
+
   // Handle live frames from UDP
   useEffect(() => {
     // Load configuration from main process
@@ -131,29 +155,7 @@ const App: React.FC = () => {
     }
   };
 
-  // Handle REC button click
-  const handleRecClick = () => {
-    if (isRecording) {
-      handleStopRecording();
-    } else {
-      if (playbackMode) {
-        setPlaybackMode(false);
-        player.pause();
-      }
-      startRecording(config);
-    }
-  };
-
-  // Handle PLAY button click
-  const handlePlayClick = () => {
-    if (playbackMode) {
-      if (player.isPlaying) {
-        player.pause();
-      } else {
-        player.play();
-      }
-    }
-  };
+  // Handle REC button click - moved above useEffect
 
   const handleMaxXChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const maxX = parseInt(e.target.value) || 1920;
