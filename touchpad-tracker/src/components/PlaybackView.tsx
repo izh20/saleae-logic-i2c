@@ -18,19 +18,6 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
   const trajectoriesRef = useRef<Map<number, FingerTrajectory>>(new Map());
   const animationFrameRef = useRef<number | null>(null);
 
-  // Clear trajectories function
-  const clearTrajectories = useCallback(() => {
-    trajectoriesRef.current.clear();
-    draw();
-  }, [draw]);
-
-  // Register clear callback if provided
-  useEffect(() => {
-    if (onClearRef) {
-      onClearRef(clearTrajectories);
-    }
-  }, [onClearRef, clearTrajectories]);
-
   // Stats state for display
   const [frameRate, setFrameRate] = useState(0);
   const [fingerCount, setFingerCount] = useState(0);
@@ -151,6 +138,19 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
 
     draw();
   }, [draw]);
+
+  // Clear trajectories function
+  const clearTrajectories = useCallback(() => {
+    trajectoriesRef.current.clear();
+    draw();
+  }, [draw]);
+
+  // Register clear callback if provided
+  useEffect(() => {
+    if (onClearRef) {
+      onClearRef(clearTrajectories);
+    }
+  }, [onClearRef, clearTrajectories]);
 
   // Expose handleFrame via a ref-like mechanism
   useEffect(() => {
