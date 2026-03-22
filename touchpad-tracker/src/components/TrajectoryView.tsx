@@ -4,7 +4,6 @@ import {
   FingerTrajectory,
   TouchState,
   FINGER_COLORS,
-  getLineWidth,
   TouchpadConfig,
 } from '../types/finger';
 
@@ -28,7 +27,6 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
   });
 
   const lastScantimeRef = useRef<number>(0);
-  const animationFrameRef = useRef<number | null>(null);
 
   // Draw function
   const draw = useCallback(() => {
