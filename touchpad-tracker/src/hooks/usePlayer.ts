@@ -21,6 +21,7 @@ export interface UsePlayerReturn {
   getCurrentFrame: () => FingerFrame | null;
   rebuildTrajectories: () => void;
   setClearCallback: (callback: () => void) => void;
+  setStepModeCallback: (callback: (isStepMode: boolean) => void) => void;
 }
 
 export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerReturn {
@@ -34,6 +35,7 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
   const intervalRef = useRef<number | null>(null);
   const lastScantimeRef = useRef<number>(0);
   const clearCallbackRef = useRef<(() => void) | null>(null);
+  const stepModeCallbackRef = useRef<((isStepMode: boolean) => void) | null>(null);
 
   // Rebuild trajectories by replaying all frames from 0 to current index
   const rebuildTrajectories = useCallback(() => {
@@ -46,14 +48,28 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
       clearCallbackRef.current();
     }
 
-    // Replay all frames from 0 to current index to rebuild trajectories
-    for (let i = 0; i <= targetIndex; i++) {
-      onFrame(frames[i]);
+    // Enter step mode - only show current frame state
+    if (stepModeCallbackRef.current) {
+      stepModeCallbackRef.current(true);
     }
+
+    // Only show current frame state
+    onFrame(frames[targetIndex]);
+
+    // Exit step mode after a short delay
+    setTimeout(() => {
+      if (stepModeCallbackRef.current) {
+        stepModeCallbackRef.current(false);
+      }
+    }, 0);
   }, [currentFrameIndex, onFrame]);
 
   const setClearCallback = useCallback((callback: () => void) => {
     clearCallbackRef.current = callback;
+  }, []);
+
+  const setStepModeCallback = useCallback((callback: (isStepMode: boolean) => void) => {
+    stepModeCallbackRef.current = callback;
   }, []);
 
   const loadRecording = useCallback((content: string): boolean => {
@@ -196,5 +212,6 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
     getCurrentFrame,
     rebuildTrajectories,
     setClearCallback,
+    setStepModeCallback,
   };
 }

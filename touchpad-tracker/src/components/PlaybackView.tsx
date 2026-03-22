@@ -11,12 +11,16 @@ interface PlaybackViewProps {
   config: TouchpadConfig;
   currentFrame: FingerFrame | null;
   onClearRef?: (callback: () => void) => void;
+  onStepModeRef?: (callback: (isStepMode: boolean) => void) => void;
 }
 
-const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onClearRef }) => {
+const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onClearRef, onStepModeRef }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const trajectoriesRef = useRef<Map<number, FingerTrajectory>>(new Map());
   const animationFrameRef = useRef<number | null>(null);
+
+  // Step mode state - in step mode, only show current frame points
+  const [isStepMode, setIsStepMode] = useState(false);
 
   // Stats state for display
   const [frameRate, setFrameRate] = useState(0);
@@ -81,6 +85,11 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
   const handleFrame = useCallback((frame: FingerFrame) => {
     const trajectories = trajectoriesRef.current;
 
+    // In step mode, clear trajectories first and only show current frame points
+    if (isStepMode) {
+      trajectories.clear();
+    }
+
     // Calculate frame rate from scantime
     const currentScantime = frame.scantime;
     if (lastScantimeRef.current > 0) {
@@ -137,7 +146,7 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
     }
 
     draw();
-  }, [draw]);
+  }, [draw, isStepMode]);
 
   // Clear trajectories function
   const clearTrajectories = useCallback(() => {
@@ -151,6 +160,13 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
       onClearRef(clearTrajectories);
     }
   }, [onClearRef, clearTrajectories]);
+
+  // Register step mode callback if provided
+  useEffect(() => {
+    if (onStepModeRef) {
+      onStepModeRef((mode: boolean) => setIsStepMode(mode));
+    }
+  }, [onStepModeRef]);
 
   // Expose handleFrame via a ref-like mechanism
   useEffect(() => {
