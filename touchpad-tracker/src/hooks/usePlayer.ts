@@ -37,10 +37,9 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
   const clearCallbackRef = useRef<(() => void) | null>(null);
   const stepModeCallbackRef = useRef<((isStepMode: boolean) => void) | null>(null);
 
-  // Rebuild trajectories by replaying all frames from 0 to current index
-  const rebuildTrajectories = useCallback(() => {
+  // Rebuild trajectories by replaying all frames from 0 to target index
+  const rebuildTrajectories = useCallback((targetIndex: number) => {
     const frames = framesRef.current;
-    const targetIndex = currentFrameIndex;
     if (frames.length === 0 || targetIndex < 0) return;
 
     // Clear trajectories first
@@ -48,21 +47,11 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
       clearCallbackRef.current();
     }
 
-    // Enter step mode - only show current frame state
-    if (stepModeCallbackRef.current) {
-      stepModeCallbackRef.current(true);
+    // Replay all frames from 0 to target index to rebuild trajectories
+    for (let i = 0; i <= targetIndex; i++) {
+      onFrame(frames[i]);
     }
-
-    // Only show current frame state
-    onFrame(frames[targetIndex]);
-
-    // Exit step mode after a short delay
-    setTimeout(() => {
-      if (stepModeCallbackRef.current) {
-        stepModeCallbackRef.current(false);
-      }
-    }, 0);
-  }, [currentFrameIndex, onFrame]);
+  }, [onFrame]);
 
   const setClearCallback = useCallback((callback: () => void) => {
     clearCallbackRef.current = callback;
@@ -114,12 +103,16 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
     return false;
   }, []);
 
-  const seek = useCallback((index: number) => {
+  const seek = useCallback((index: number, isBackward?: boolean) => {
     if (index >= 0 && index < framesRef.current.length) {
+      // If going backward, rebuild trajectories from 0 to index
+      if (isBackward && index < currentFrameIndex) {
+        rebuildTrajectories(index);
+      }
       setCurrentFrameIndex(index);
       onFrame(framesRef.current[index]);
     }
-  }, [onFrame]);
+  }, [onFrame, currentFrameIndex, rebuildTrajectories]);
 
   const stepForward = useCallback(() => {
     const nextIndex = Math.min(currentFrameIndex + 1, totalFrames - 1);
@@ -128,11 +121,11 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
 
   const stepBackward = useCallback(() => {
     const prevIndex = Math.max(currentFrameIndex - 1, 0);
-    // If going backward, signal trajectory rebuild
+    // If going backward, rebuild trajectories from 0 to prevIndex
     if (prevIndex < currentFrameIndex) {
-      rebuildTrajectories();
+      rebuildTrajectories(prevIndex);
     }
-    seek(prevIndex);
+    seek(prevIndex, true);
   }, [currentFrameIndex, seek, rebuildTrajectories]);
 
   const play = useCallback(() => {

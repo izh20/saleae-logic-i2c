@@ -349,7 +349,8 @@ const App: React.FC = () => {
           onStepForward={player.stepForward}
           onStepBackward={player.stepBackward}
           onSeek={(frame) => {
-            player.seek(frame);
+            const isBackward = frame < player.currentFrameIndex;
+            player.seek(frame, isBackward);
             setCurrentFrameIndex(frame);
           }}
           onSpeedChange={(speed) => player.setSpeed(speed as PlaybackSpeed)}
