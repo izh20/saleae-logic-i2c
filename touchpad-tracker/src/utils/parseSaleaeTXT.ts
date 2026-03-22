@@ -95,6 +95,8 @@ export function parseSaleaeCSV(content: string): FingerFrame[] {
   const frames: FingerFrame[] = [];
   const lines = content.split('\n');
 
+  console.log('parseSaleaeCSV: total lines:', lines.length);
+
   // Group data bytes by Packet ID
   const packetMap = new Map<string, { time: number; address: string; data: string[] }>();
 
@@ -121,18 +123,26 @@ export function parseSaleaeCSV(content: string): FingerFrame[] {
     packetMap.get(packetId)!.data.push(data);
   }
 
+  console.log('parseSaleaeCSV: packets found:', packetMap.size);
+  console.log('parseSaleaeCSV: first packet data length:', packetMap.get('0')?.data.length);
+
   // Parse each packet
   for (const [packetId, packet] of packetMap) {
     const { time, data } = packet;
+    console.log(`parseSaleaeCSV: parsing packet ${packetId}, data length:`, data.length);
     if (data.length < 3) continue;
 
     // Convert data strings to hex format for parseFingerFrameFromData
     const frame = parseFingerFrameFromData(data, time);
     if (frame) {
+      console.log(`parseSaleaeCSV: packet ${packetId} parsed successfully, fingerCount:`, frame.fingerCount);
       frames.push(frame);
+    } else {
+      console.log(`parseSaleaeCSV: packet ${packetId} parse returned null`);
     }
   }
 
+  console.log('parseSaleaeCSV: total frames:', frames.length);
   return frames;
 }
 

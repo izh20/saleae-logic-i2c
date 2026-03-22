@@ -33,10 +33,15 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
   const lastScantimeRef = useRef<number>(0);
 
   const loadRecording = useCallback((content: string): boolean => {
+    // Debug: check content format
+    console.log('loadRecording called, content length:', content.length);
+    console.log('First 100 chars:', content.substring(0, 100));
+
     try {
       // Try to parse as our JSON format first
       const data = JSON.parse(content);
       if (data.frames && Array.isArray(data.frames)) {
+        console.log('Parsed as JSON, frames:', data.frames.length);
         framesRef.current = data.frames;
         setTotalFrames(data.frames.length);
         setCurrentFrameIndex(0);
@@ -51,6 +56,7 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
     // Try to parse as Saleae CSV format
     try {
       const frames = parseSaleaeCSV(content);
+      console.log('Parsed as CSV, frames:', frames.length);
       if (frames.length > 0) {
         framesRef.current = frames;
         setTotalFrames(frames.length);
@@ -59,10 +65,12 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
         lastScantimeRef.current = 0;
         return true;
       }
-    } catch {
+    } catch (e) {
+      console.error('CSV parse error:', e);
       return false;
     }
 
+    console.log('Failed to parse recording');
     return false;
   }, []);
 
