@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import TrajectoryView from './components/TrajectoryView';
+import PlaybackView from './components/PlaybackView';
 import PlaybackControls from './components/PlaybackControls';
 import { TouchpadConfig, DEFAULT_CONFIG, FingerFrame } from './types/finger';
 import { useRecorder } from './hooks/useRecorder';
@@ -11,6 +12,7 @@ const App: React.FC = () => {
   const [playbackMode, setPlaybackMode] = useState(false);
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [totalFrames, setTotalFrames] = useState(0);
+  const [playbackFrame, setPlaybackFrame] = useState<FingerFrame | null>(null);
 
   // Ref to hold the callback for sending frames to TrajectoryView
   const trajectoriesCallbackRef = useRef<(frame: FingerFrame) => void | null>(null);
@@ -20,9 +22,7 @@ const App: React.FC = () => {
 
   // Player hook
   const handlePlaybackFrame = useCallback((frame: FingerFrame) => {
-    if (trajectoriesCallbackRef.current) {
-      trajectoriesCallbackRef.current(frame);
-    }
+    setPlaybackFrame(frame);
   }, []);
 
   const player = usePlayer(handlePlaybackFrame);
@@ -138,10 +138,10 @@ const App: React.FC = () => {
         setPlaybackMode(true);
         setTotalFrames(player.totalFrames);
         setCurrentFrameIndex(0);
-        // Send first frame
+        // Set first frame for playback
         const frame = player.getCurrentFrame();
-        if (frame && trajectoriesCallbackRef.current) {
-          trajectoriesCallbackRef.current(frame);
+        if (frame) {
+          setPlaybackFrame(frame);
         }
       }
     }
@@ -264,19 +264,8 @@ const App: React.FC = () => {
           <button
             onClick={() => {
               setPlaybackMode(false);
+              setPlaybackFrame(null);
               player.pause();
-              // Clear trajectories by sending an empty frame
-              if (trajectoriesCallbackRef.current) {
-                const emptyFrame: FingerFrame = {
-                  timestamp: 0,
-                  packetType: 47,
-                  slots: [],
-                  fingerCount: 0,
-                  scantime: 0,
-                  keyState: 0,
-                };
-                trajectoriesCallbackRef.current(emptyFrame);
-              }
             }}
             style={{
               padding: '4px 12px',
@@ -341,7 +330,11 @@ const App: React.FC = () => {
 
       {/* Main content */}
       <main style={{ flex: 1, overflow: 'hidden' }}>
-        <TrajectoryView config={config} onFrameRef={handleTrajectoryViewRef} />
+        {playbackMode ? (
+          <PlaybackView config={config} currentFrame={playbackFrame} />
+        ) : (
+          <TrajectoryView config={config} onFrameRef={handleTrajectoryViewRef} />
+        )}
       </main>
 
       {/* Playback controls - shown when in playback mode */}
