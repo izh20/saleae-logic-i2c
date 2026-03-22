@@ -111,12 +111,15 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame }) => 
     }
     lastScantimeRef.current = currentScantime;
 
-    // Filter active fingers (valid coordinates)
-    const active = frame.slots.filter(slot => !(slot.x === 0 && slot.y === 0));
+    // Filter active fingers (valid coordinates and touch state)
+    const active = frame.slots.filter(slot =>
+      !(slot.x === 0 && slot.y === 0) &&
+      (slot.state === TouchState.FingerTouch || slot.state === TouchState.LargeTouch)
+    );
 
     // Update display state - only show if there are active fingers
     if (active.length > 0) {
-      setFingerCount(frame.fingerCount);
+      setFingerCount(active.length);
       setScantime(frame.scantime);
       setKeyState(frame.keyState ?? 0);
       setActiveFingers(active);
