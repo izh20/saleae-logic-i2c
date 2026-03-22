@@ -48,54 +48,33 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
 
       const color = FINGER_COLORS[fingerId % FINGER_COLORS.length];
 
-      // Draw line segments grouped by state
-      // Group points by state to use different line widths
-      let segmentStart = 0;
-      let currentState = trajectory.points[0].state;
-
-      for (let i = 1; i <= trajectory.points.length; i++) {
+      // Draw all points and connecting lines
+      for (let i = 0; i < trajectory.points.length; i++) {
         const pt = trajectory.points[i];
-        const sameState = pt && pt.state === currentState;
+        const x = (pt.x / maxX) * canvas.width;
+        const y = (pt.y / maxY) * canvas.height;
 
-        if (i === trajectory.points.length || !sameState) {
-          // Draw segment from segmentStart to i-1
-          const lineWidth = currentState === TouchState.LargeTouch ? 8 : 2;
+        // Draw line from previous point to current point
+        if (i > 0) {
+          const prevPt = trajectory.points[i - 1];
+          const prevX = (prevPt.x / maxX) * canvas.width;
+          const prevY = (prevPt.y / maxY) * canvas.height;
+
           ctx.beginPath();
           ctx.strokeStyle = color;
-          ctx.lineWidth = lineWidth;
-          ctx.lineCap = 'round';
-          ctx.lineJoin = 'round';
-
-          const startPt = trajectory.points[segmentStart];
-          ctx.moveTo(
-            (startPt.x / maxX) * canvas.width,
-            (startPt.y / maxY) * canvas.height
-          );
-
-          for (let j = segmentStart + 1; j < i; j++) {
-            const p = trajectory.points[j];
-            ctx.lineTo(
-              (p.x / maxX) * canvas.width,
-              (p.y / maxY) * canvas.height
-            );
-          }
+          ctx.lineWidth = pt.state === TouchState.LargeTouch ? 3 : 1.5;
+          ctx.moveTo(prevX, prevY);
+          ctx.lineTo(x, y);
           ctx.stroke();
-
-          if (i < trajectory.points.length) {
-            segmentStart = i;
-            currentState = pt.state;
-          }
         }
-      }
 
-      // Draw end point as circle
-      const lastPt = trajectory.points[trajectory.points.length - 1];
-      const lastX = (lastPt.x / maxX) * canvas.width;
-      const lastY = (lastPt.y / maxY) * canvas.height;
-      ctx.beginPath();
-      ctx.arc(lastX, lastY, 4, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.fill();
+        // Draw point as circle
+        const radius = pt.state === TouchState.LargeTouch ? 6 : 4;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+      }
     });
   }, [config]);
 
