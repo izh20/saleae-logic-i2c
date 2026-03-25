@@ -255,6 +255,7 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
         <div style={{ color: '#6a9955', fontWeight: 600 }}>
           PLAYBACK
         </div>
+        <div style={{ color: '#6a9955' }}>{frameRate} Hz</div>
         <div>Fingers: {fingerCount}</div>
         <div>ScanTime: {scantime}</div>
         <div>Key: {keyState}</div>
