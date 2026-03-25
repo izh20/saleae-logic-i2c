@@ -113,7 +113,10 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
   }, []);
 
   const seek = useCallback((index: number, isBackward?: boolean) => {
-    if (index >= 0 && index < framesRef.current.length) {
+    const maxIndex = framesRef.current.length - 1;
+    if (index < 0) index = 0;
+    if (index > maxIndex) index = maxIndex;
+    if (framesRef.current.length > 0) {
       // If going backward, rebuild trajectories from 0 to index
       if (isBackward && index < currentFrameIndex) {
         rebuildTrajectories(index);
@@ -124,12 +127,12 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
   }, [onFrame, currentFrameIndex, rebuildTrajectories]);
 
   const stepForward = useCallback(() => {
-    const nextIndex = Math.min(currentFrameIndex + 1, totalFrames - 1);
+    const nextIndex = currentFrameIndex + 1;
     seek(nextIndex);
-  }, [currentFrameIndex, totalFrames, seek]);
+  }, [currentFrameIndex, seek]);
 
   const stepBackward = useCallback(() => {
-    const prevIndex = Math.max(currentFrameIndex - 1, 0);
+    const prevIndex = currentFrameIndex - 1;
     seek(prevIndex, true);
   }, [currentFrameIndex, seek]);
 
