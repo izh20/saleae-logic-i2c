@@ -88,7 +88,8 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
     if (lastScantimeRef.current > 0) {
       let delta = currentScantime - lastScantimeRef.current;
       if (delta < 0) delta += 65536;
-      if (delta > 0) {
+      // Filter unrealistic deltas (min 1ms = 10 units, max 500Hz = 2000 units)
+      if (delta > 0 && delta < 2000) {
         const intervalMs = delta / 10;
         frameRate = Math.round(1000 / intervalMs);
       }
