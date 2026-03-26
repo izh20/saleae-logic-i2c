@@ -73,6 +73,16 @@ npm start
 - 多指颜色区分（5种颜色）
 - 顶部状态栏显示：帧率、手指数、扫描时间、按键状态
 - 每个手指的坐标实时显示在状态栏
+- **支持笔（Stylus）轨迹显示**
+
+### 笔轨迹显示
+
+- 笔数据与手指数据同时显示
+- **笔状态**：release / hover / tip
+- **颜色区分**：Tip（白色）、Hover（红色）
+- **点大小**：Tip 半径 1.5px，Hover 半径 0.5px
+- **线宽**：0.5px
+- 状态栏显示笔坐标 (X, Y)、压力 (P)、倾角 (TiltX, TiltY)
 
 ### 录制与回放
 
@@ -91,6 +101,7 @@ npm start
 - LargeTouch: 圆点半径 4px
 - 相邻点用线条连接（线宽 1px）
 - 不同手指使用不同颜色
+- **笔轨迹**：Tip 白色、Hover 红色
 
 ### 按键状态
 
@@ -101,6 +112,12 @@ npm start
 - 可配置触摸板 Max X/Y 坐标（默认 3000x2000）
 - 界面右上角输入框直接修改
 
+### 笔解析模式
+
+- **TP Mode**：使用字节3的状态值判断（0x20=Hover, 0x21=Tip）
+- **MCU Mode**：根据压力值判断（pressure >= 100 为 Tip，< 100 为 Hover）
+- 界面右上角下拉框切换
+
 ---
 
 ## 快捷键
@@ -108,6 +125,8 @@ npm start
 | 按键 | 功能 |
 |------|------|
 | R | 开始/停止录制 |
+| C | 清除所有轨迹（手指+笔） |
+| K | 仅清除笔轨迹（实时模式） |
 | 空格 | 播放/暂停（回放模式下） |
 | ← | 逐帧后退（回放模式下） |
 | → | 逐帧前进（回放模式下） |
@@ -124,7 +143,7 @@ npm start
 {
   "version": 1,
   "recordedAt": "2026-03-22T10:30:00.000Z",
-  "config": { "maxX": 3000, "maxY": 2000 },
+  "config": { "maxX": 3000, "maxY": 2000, "stylusParseMode": "tp" },
   "frames": [
     {
       "timestamp": 1234567890,
@@ -134,7 +153,16 @@ npm start
       ],
       "fingerCount": 1,
       "scantime": 1000,
-      "keyState": 0
+      "keyState": 0,
+      "stylus": {
+        "stylusId": 128,
+        "state": 33,
+        "x": 1500,
+        "y": 1000,
+        "tipPressure": 150,
+        "xTilt": 10,
+        "yTilt": -5
+      }
     }
   ]
 }
@@ -191,6 +219,24 @@ Time [s],Packet ID,Address,Data,Read/Write,ACK/NAK
 | 2 | 大面积按下 (Large Touch) |
 | 1 | 手指抬起 (Finger Release) |
 | 0 | 大面积抬起 (Large Release) |
+
+### 笔数据包（47字节）
+
+**帧头**：`[0x2F, 0x00, 0x08]`
+
+| 偏移 | 名称 | 说明 |
+|-----|------|------|
+| 0 | Packet length | 0x2F (低字节) |
+| 1 | Packet length | 0x00 (高字节) |
+| 2 | Report ID | 0x08 |
+| 3 | Stylus Status | 0x20=Hover, 0x21=Tip, 0x00=Release |
+| 4 | Stylus ID | 固定 0x80 |
+| 5-6 | X[7:0], X[15:8] | X坐标 (小端) |
+| 7-8 | Y[7:0], Y[15:8] | Y坐标 (小端) |
+| 9-10 | Tip Pressure | 16-bit 小端 |
+| 11-12 | X Tilt | 16-bit 小端 |
+| 13-14 | Y Tilt | 16-bit 小端 |
+| 15-46 | Reserve | 保留字节 |
 
 ---
 

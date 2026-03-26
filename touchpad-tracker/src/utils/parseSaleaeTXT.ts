@@ -107,9 +107,9 @@ function parseFingerFrameFromData(data: string[], timestamp: number): FingerFram
   };
 }
 
-// Parse stylus frame from data (47 bytes, header 0x2F 0x00 0x08)
+// Parse stylus frame from data (15 bytes valid, header 0x2F 0x00 0x08)
 function parseStylusFrameFromData(data: string[], timestamp: number): FingerFrame | null {
-  if (data.length < 3) return null;
+  if (data.length < 15) return null;
 
   const byte0 = parseHexOrDec(data[0]);
   const byte1 = parseHexOrDec(data[1]);
@@ -118,9 +118,6 @@ function parseStylusFrameFromData(data: string[], timestamp: number): FingerFram
   // Check for stylus packet header
   const isStylus = byte0 === 0x2F && byte1 === 0x00 && byte2 === 0x08;
   if (!isStylus) return null;
-
-  // Stylus packet is 47 bytes
-  if (data.length < 47) return null;
 
   const stylus: StylusSlot = {
     stylusId: parseHexOrDec(data[4]),
@@ -132,19 +129,13 @@ function parseStylusFrameFromData(data: string[], timestamp: number): FingerFram
     yTilt: parseHexOrDec(data[13]) | (parseHexOrDec(data[14]) << 8),
   };
 
-  // Parse metadata at bytes 43-46
-  const scantimeLow = parseHexOrDec(data[43]);
-  const scantimeHigh = parseHexOrDec(data[44]);
-  const scantime = scantimeLow | (scantimeHigh << 8);
-  const keyState = parseHexOrDec(data[46]);
-
   return {
     timestamp,
     packetType: 47,
     slots: [],
     fingerCount: 0,
-    scantime,
-    keyState,
+    scantime: 0,
+    keyState: 0,
     stylus,
   };
 }
@@ -229,8 +220,8 @@ function parseSaleaeCSVInternal(content: string, supportedAddrs: number[]): Fing
     }
 
     if (isStylus) {
-      // Stylus packet is 47 bytes
-      const frameLen = 47;
+      // Stylus packet only has 15 bytes valid
+      const frameLen = 15;
       const endIdx = i + frameLen;
 
       if (endIdx <= allData.length) {

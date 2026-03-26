@@ -2,12 +2,14 @@
 export interface TouchpadConfig {
   maxX: number;
   maxY: number;
+  stylusParseMode: 'tp' | 'mcu';  // 'tp': use byte3 state, 'mcu': derive from pressure
 }
 
 // Default configuration
 export const DEFAULT_CONFIG: TouchpadConfig = {
   maxX: 3000,
   maxY: 2000,
+  stylusParseMode: 'tp',
 };
 
 // Finger slot data structure
@@ -81,8 +83,8 @@ export const FINGER_COLORS = [
 ];
 
 // Stylus colors for visualization
-export const STYLUS_COLOR = '#ff00ff';      // Magenta - Tip (contact)
-export const STYLUS_HOVER_COLOR = '#00ffff'; // Cyan - Hover
+export const STYLUS_COLOR = '#ffffff';      // White - Tip (contact)
+export const STYLUS_HOVER_COLOR = '#ff0000'; // Red - Hover
 
 // Line width based on touch state
 export const getLineWidth = (state: TouchState): number => {

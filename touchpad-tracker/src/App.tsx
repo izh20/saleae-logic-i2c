@@ -169,6 +169,10 @@ const App: React.FC = () => {
     setConfig(prev => ({ ...prev, maxY }));
   };
 
+  const handleStylusModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setConfig(prev => ({ ...prev, stylusParseMode: e.target.value as 'tp' | 'mcu' }));
+  };
+
   const handleI2cAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const addr = e.target.value;
     setI2cAddress(addr);
@@ -344,6 +348,16 @@ const App: React.FC = () => {
               onChange={handleMaxYChange}
               style={{ width: 60, background: '#3c3c3c', color: '#d4d4d4', border: 'none', padding: '2px 4px', borderRadius: 2 }}
             />
+          </label>
+          <label style={{ fontSize: 12 }}>
+            Stylus: <select
+              value={config.stylusParseMode}
+              onChange={handleStylusModeChange}
+              style={{ background: '#3c3c3c', color: '#d4d4d4', border: 'none', padding: '2px 4px', borderRadius: 2 }}
+            >
+              <option value="tp">TP Mode</option>
+              <option value="mcu">MCU Mode</option>
+            </select>
           </label>
         </div>
       </header>

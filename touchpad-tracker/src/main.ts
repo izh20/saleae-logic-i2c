@@ -101,7 +101,7 @@ function parseFingerFrame(data: string[], timestamp: number): FingerFrame | null
 
 // Parse I2C data array to stylus frame
 function parseStylusFrame(data: string[], timestamp: number): FingerFrame | null {
-  if (data.length < 3) return null;
+  if (data.length < 15) return null;
 
   const byte0 = parseHexOrDec(data[0]);
   const byte1 = parseHexOrDec(data[1]);
@@ -111,9 +111,7 @@ function parseStylusFrame(data: string[], timestamp: number): FingerFrame | null
   const isStylus = byte0 === 0x2F && byte1 === 0x00 && byte2 === 0x08;
   if (!isStylus) return null;
 
-  // Stylus packet is 47 bytes
-  if (data.length < 47) return null;
-
+  // Stylus packet only has 15 bytes valid (0-14)
   const stylus: StylusSlot = {
     stylusId: parseHexOrDec(data[4]),
     state: parseHexOrDec(data[3]) as StylusState,
@@ -124,19 +122,13 @@ function parseStylusFrame(data: string[], timestamp: number): FingerFrame | null
     yTilt: parseHexOrDec(data[13]) | (parseHexOrDec(data[14]) << 8),
   };
 
-  // Parse metadata at bytes 43-46
-  const scantimeLow = parseHexOrDec(data[43]);
-  const scantimeHigh = parseHexOrDec(data[44]);
-  const scantime = scantimeLow | (scantimeHigh << 8);
-  const keyState = parseHexOrDec(data[46]);
-
   return {
     timestamp,
     packetType: 47,
     slots: [],
     fingerCount: 0,
-    scantime,
-    keyState,
+    scantime: 0,
+    keyState: 0,
     stylus,
   };
 }

@@ -100,14 +100,14 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
           const ptColor = pt.state === StylusState.Tip ? STYLUS_COLOR : STYLUS_HOVER_COLOR;
           ctx.beginPath();
           ctx.strokeStyle = ptColor;
-          ctx.lineWidth = pt.state === StylusState.Tip ? 1 : 1;
+          ctx.lineWidth = 0.5;
           ctx.moveTo(prevX, prevY);
           ctx.lineTo(x, y);
           ctx.stroke();
         }
 
         // Draw point as circle
-        const radius = pt.state === StylusState.Tip ? 4 : 2;
+        const radius = pt.state === StylusState.Tip ? 1.5 : 0.5;
         const ptColor = pt.state === StylusState.Tip ? STYLUS_COLOR : STYLUS_HOVER_COLOR;
         ctx.beginPath();
         ctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -159,10 +159,18 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
 
     // Process stylus data - no longer clearing on release
     if (frame.stylus) {
-      const { state, x, y } = frame.stylus;
+      const { state, x, y, tipPressure } = frame.stylus;
+
+      // Determine effective state based on parse mode
+      let effectiveState = state;
+      if (config.stylusParseMode === 'mcu') {
+        // MCU mode: pressure >= 100 is tip, otherwise hover
+        effectiveState = tipPressure >= 100 ? StylusState.Tip : StylusState.Hover;
+      }
+
       if (x !== 0 || y !== 0) {
-        if (state === StylusState.Hover || state === StylusState.Tip) {
-          stylusTrajectory.push({ x, y, state });
+        if (effectiveState === StylusState.Hover || effectiveState === StylusState.Tip) {
+          stylusTrajectory.push({ x, y, state: effectiveState });
           if (stylusTrajectory.length > 1000) {
             stylusTrajectory.splice(0, 500);
           }
@@ -176,6 +184,12 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
       (slot.state === TouchState.FingerTouch || slot.state === TouchState.LargeTouch)
     );
 
+    // Determine effective stylus state for display
+    let effectiveStylusState = frame.stylus?.state ?? StylusState.Release;
+    if (config.stylusParseMode === 'mcu' && frame.stylus) {
+      effectiveStylusState = frame.stylus.tipPressure >= 100 ? StylusState.Tip : StylusState.Hover;
+    }
+
     // Batch update state and draw immediately
     setStats({
       frameRate: active.length > 0 || frame.stylus ? frameRate : 0,
@@ -183,7 +197,7 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
       scantime: active.length > 0 || frame.stylus ? frame.scantime : 0,
       keyState: active.length > 0 || frame.stylus ? (frame.keyState ?? 0) : 0,
       activeFingers: active,
-      stylus: frame.stylus && (frame.stylus.state === StylusState.Hover || frame.stylus.state === StylusState.Tip) ? frame.stylus : null,
+      stylus: frame.stylus && (effectiveStylusState === StylusState.Hover || effectiveStylusState === StylusState.Tip) ? frame.stylus : null,
     });
 
     // Draw immediately for lowest latency
@@ -247,6 +261,16 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [draw]);
 
+  // Get stylus state name
+  const getStylusStateName = (state: StylusState): string => {
+    switch (state) {
+      case StylusState.Release: return 'release';
+      case StylusState.Hover: return 'hover';
+      case StylusState.Tip: return 'tip';
+      default: return 'unknown';
+    }
+  };
+
   const stateNames = ['LargeRelease', 'FingerRelease', 'LargeTouch', 'FingerTouch'];
 
   return (
@@ -306,7 +330,7 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
         ))}
         {stats.stylus && (
           <div style={{ color: STYLUS_COLOR }}>
-            Stylus: X={stats.stylus.x} Y={stats.stylus.y} P={stats.stylus.tipPressure}
+            Stylus: {getStylusStateName(stats.stylus.state)} X={stats.stylus.x} Y={stats.stylus.y} P={stats.stylus.tipPressure} TiltX={stats.stylus.xTilt} TiltY={stats.stylus.yTilt}
           </div>
         )}
         <div style={{ marginLeft: 'auto' }}>

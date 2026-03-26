@@ -106,14 +106,14 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
           const ptColor = pt.state === StylusState.Tip ? STYLUS_COLOR : STYLUS_HOVER_COLOR;
           ctx.beginPath();
           ctx.strokeStyle = ptColor;
-          ctx.lineWidth = pt.state === StylusState.Tip ? 1 : 1;
+          ctx.lineWidth = 0.5;
           ctx.moveTo(prevX, prevY);
           ctx.lineTo(x, y);
           ctx.stroke();
         }
 
         // Draw point as circle
-        const radius = pt.state === StylusState.Tip ? 4 : 2;
+        const radius = pt.state === StylusState.Tip ? 1.5 : 0.5;
         const ptColor = pt.state === StylusState.Tip ? STYLUS_COLOR : STYLUS_HOVER_COLOR;
         ctx.beginPath();
         ctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -158,8 +158,14 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
       (slot.state === TouchState.FingerTouch || slot.state === TouchState.LargeTouch)
     );
 
+    // Determine effective stylus state based on parse mode
+    let effectiveStylusState = frame.stylus?.state ?? StylusState.Release;
+    if (config.stylusParseMode === 'mcu' && frame.stylus) {
+      effectiveStylusState = frame.stylus.tipPressure >= 100 ? StylusState.Tip : StylusState.Hover;
+    }
+
     // Update display state - show if there are active fingers or stylus
-    const hasStylus = frame.stylus && (frame.stylus.state === StylusState.Hover || frame.stylus.state === StylusState.Tip);
+    const hasStylus = frame.stylus && (effectiveStylusState === StylusState.Hover || effectiveStylusState === StylusState.Tip);
     if (active.length > 0 || hasStylus) {
       setFingerCount(active.length);
       setScantime(frame.scantime);
@@ -201,12 +207,17 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
 
     // Process stylus data - no longer clearing on release
     if (frame.stylus) {
-      const { state, x, y } = frame.stylus;
-      console.log('[PlaybackView] processing stylus - state:', state, 'StylusState.Hover:', StylusState.Hover, 'StylusState.Tip:', StylusState.Tip, 'match:', state === StylusState.Hover || state === StylusState.Tip);
+      const { state, x, y, tipPressure } = frame.stylus;
+
+      // Determine effective state based on parse mode
+      let effectiveState = state;
+      if (config.stylusParseMode === 'mcu') {
+        effectiveState = tipPressure >= 100 ? StylusState.Tip : StylusState.Hover;
+      }
+
       if (x !== 0 || y !== 0) {
-        if (state === StylusState.Hover || state === StylusState.Tip) {
-          stylusTrajectory.push({ x, y, state });
-          console.log('[PlaybackView] pushed to trajectory, length now:', stylusTrajectory.length);
+        if (effectiveState === StylusState.Hover || effectiveState === StylusState.Tip) {
+          stylusTrajectory.push({ x, y, state: effectiveState });
           if (stylusTrajectory.length > 1000) {
             stylusTrajectory.splice(0, 500);
           }
@@ -215,7 +226,7 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
     }
 
     draw();
-  }, [draw, isStepMode]);
+  }, [draw, isStepMode, config.stylusParseMode]);
 
   // Clear trajectories function
   const clearTrajectories = useCallback(() => {
@@ -287,6 +298,16 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [draw]);
 
+  // Get stylus state name
+  const getStylusStateName = (state: StylusState): string => {
+    switch (state) {
+      case StylusState.Release: return 'release';
+      case StylusState.Hover: return 'hover';
+      case StylusState.Tip: return 'tip';
+      default: return 'unknown';
+    }
+  };
+
   const stateNames = ['LargeRelease', 'FingerRelease', 'LargeTouch', 'FingerTouch'];
 
   return (
@@ -347,7 +368,7 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
         ))}
         {stylusData && (
           <div style={{ color: STYLUS_COLOR }}>
-            Stylus: X={stylusData.x} Y={stylusData.y} P={stylusData.tipPressure}
+            Stylus: {getStylusStateName(stylusData.state)} X={stylusData.x} Y={stylusData.y} P={stylusData.tipPressure} TiltX={stylusData.xTilt} TiltY={stylusData.yTilt}
           </div>
         )}
         <div style={{ marginLeft: 'auto' }}>
