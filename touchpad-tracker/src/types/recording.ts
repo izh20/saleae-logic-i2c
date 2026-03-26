@@ -1,4 +1,4 @@
-import { FingerSlot, TouchpadConfig } from './finger';
+import { FingerSlot, StylusSlot, TouchpadConfig } from './finger';
 
 export interface RecordedFrame {
   timestamp: number;
@@ -7,6 +7,7 @@ export interface RecordedFrame {
   fingerCount: number;
   scantime: number;
   keyState?: number;
+  stylus?: StylusSlot;
 }
 
 export interface RecordingFile {

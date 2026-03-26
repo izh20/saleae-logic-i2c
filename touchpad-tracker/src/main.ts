@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'node:path';
 import dgram from 'node:dgram';
 import started from 'electron-squirrel-startup';
-import { FingerFrame, FingerSlot, TouchState, DEFAULT_CONFIG } from './types/finger';
+import { FingerFrame, FingerSlot, TouchState, StylusState, StylusSlot, DEFAULT_CONFIG } from './types/finger';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -99,6 +99,48 @@ function parseFingerFrame(data: string[], timestamp: number): FingerFrame | null
   };
 }
 
+// Parse I2C data array to stylus frame
+function parseStylusFrame(data: string[], timestamp: number): FingerFrame | null {
+  if (data.length < 3) return null;
+
+  const byte0 = parseHexOrDec(data[0]);
+  const byte1 = parseHexOrDec(data[1]);
+  const byte2 = parseHexOrDec(data[2]);
+
+  // Check for stylus packet header (0x2F 0x00 0x08)
+  const isStylus = byte0 === 0x2F && byte1 === 0x00 && byte2 === 0x08;
+  if (!isStylus) return null;
+
+  // Stylus packet is 47 bytes
+  if (data.length < 47) return null;
+
+  const stylus: StylusSlot = {
+    stylusId: parseHexOrDec(data[4]),
+    state: parseHexOrDec(data[3]) as StylusState,
+    x: parseHexOrDec(data[5]) | (parseHexOrDec(data[6]) << 8),
+    y: parseHexOrDec(data[7]) | (parseHexOrDec(data[8]) << 8),
+    tipPressure: parseHexOrDec(data[9]) | (parseHexOrDec(data[10]) << 8),
+    xTilt: parseHexOrDec(data[11]) | (parseHexOrDec(data[12]) << 8),
+    yTilt: parseHexOrDec(data[13]) | (parseHexOrDec(data[14]) << 8),
+  };
+
+  // Parse metadata at bytes 43-46
+  const scantimeLow = parseHexOrDec(data[43]);
+  const scantimeHigh = parseHexOrDec(data[44]);
+  const scantime = scantimeLow | (scantimeHigh << 8);
+  const keyState = parseHexOrDec(data[46]);
+
+  return {
+    timestamp,
+    packetType: 47,
+    slots: [],
+    fingerCount: 0,
+    scantime,
+    keyState,
+    stylus,
+  };
+}
+
 // Start UDP server to receive I2C data
 function startUdpServer() {
   udpServer = dgram.createSocket('udp4');
@@ -117,10 +159,15 @@ function startUdpServer() {
         const dataArray = message.data.data || [];
         console.log('TX data array:', dataArray);
         const timestamp = Date.now();
-        const frame = parseFingerFrame(dataArray, timestamp);
+
+        // Try to parse as finger frame first, then as stylus frame
+        let frame = parseFingerFrame(dataArray, timestamp);
+        if (!frame) {
+          frame = parseStylusFrame(dataArray, timestamp);
+        }
 
         if (frame) {
-          console.log('Parsed finger frame:', frame);
+          console.log('Parsed frame:', frame);
           if (mainWindow) {
             mainWindow.webContents.send('finger-frame', frame);
           }

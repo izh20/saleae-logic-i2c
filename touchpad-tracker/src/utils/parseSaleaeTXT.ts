@@ -1,4 +1,4 @@
-import { FingerFrame, FingerSlot } from '../types/finger';
+import { FingerFrame, FingerSlot, StylusSlot, StylusState } from '../types/finger';
 
 // Parse hex string to number (supports both hex and decimal)
 function parseHexOrDec(val: string): number {
@@ -107,6 +107,48 @@ function parseFingerFrameFromData(data: string[], timestamp: number): FingerFram
   };
 }
 
+// Parse stylus frame from data (47 bytes, header 0x2F 0x00 0x08)
+function parseStylusFrameFromData(data: string[], timestamp: number): FingerFrame | null {
+  if (data.length < 3) return null;
+
+  const byte0 = parseHexOrDec(data[0]);
+  const byte1 = parseHexOrDec(data[1]);
+  const byte2 = parseHexOrDec(data[2]);
+
+  // Check for stylus packet header
+  const isStylus = byte0 === 0x2F && byte1 === 0x00 && byte2 === 0x08;
+  if (!isStylus) return null;
+
+  // Stylus packet is 47 bytes
+  if (data.length < 47) return null;
+
+  const stylus: StylusSlot = {
+    stylusId: parseHexOrDec(data[4]),
+    state: parseHexOrDec(data[3]) as StylusState,
+    x: parseHexOrDec(data[5]) | (parseHexOrDec(data[6]) << 8),
+    y: parseHexOrDec(data[7]) | (parseHexOrDec(data[8]) << 8),
+    tipPressure: parseHexOrDec(data[9]) | (parseHexOrDec(data[10]) << 8),
+    xTilt: parseHexOrDec(data[11]) | (parseHexOrDec(data[12]) << 8),
+    yTilt: parseHexOrDec(data[13]) | (parseHexOrDec(data[14]) << 8),
+  };
+
+  // Parse metadata at bytes 43-46
+  const scantimeLow = parseHexOrDec(data[43]);
+  const scantimeHigh = parseHexOrDec(data[44]);
+  const scantime = scantimeLow | (scantimeHigh << 8);
+  const keyState = parseHexOrDec(data[46]);
+
+  return {
+    timestamp,
+    packetType: 47,
+    slots: [],
+    fingerCount: 0,
+    scantime,
+    keyState,
+    stylus,
+  };
+}
+
 /**
  * Parse Saleae Logic exported CSV file to extract FingerFrame array
  * CSV format:
@@ -155,18 +197,58 @@ function parseSaleaeCSVInternal(content: string, supportedAddrs: number[]): Fing
 
   console.log('parseSaleaeCSV: total data bytes collected:', allData.length);
 
+  // Debug: scan for all 0x2F bytes to find potential packet headers
+  const potentialHeaders: number[] = [];
+  for (let j = 0; j < Math.min(allData.length, 500); j++) {
+    if (parseHexOrDec(allData[j]) === 0x2F) {
+      potentialHeaders.push(j);
+    }
+  }
+  console.log('parseSaleaeCSV: found 0x2F at positions:', potentialHeaders.slice(0, 20));
+
   // Scan for frame headers and parse frames
   let i = 0;
   let frameIndex = 0;
+  let stylusCount = 0;
+  let fingerCount = 0;
   while (i < allData.length - 3) {
     const byte0 = parseHexOrDec(allData[i]);
     const byte1 = parseHexOrDec(allData[i + 1]);
     const byte2 = parseHexOrDec(allData[i + 2]);
 
+    // Check for stylus packet first (0x2F 0x00 0x08)
+    const isStylus = byte0 === 0x2F && byte1 === 0x00 && byte2 === 0x08;
+
+    // Check for finger packets
     const is47Byte = byte0 === 0x2F && byte1 === 0x00 && byte2 === 0x04;
     const is32Byte = byte0 === 0x20 && byte1 === 0x00 && byte2 === 0x04;
 
-    if (is47Byte || is32Byte) {
+    // Debug: log first few header detections
+    if (frameIndex < 5 && (isStylus || is47Byte || is32Byte)) {
+      console.log(`parseSaleaeCSV: byte[${i}]=${byte0.toString(16)}, byte[${i+1}]=${byte1.toString(16)}, byte[${i+2}]=${byte2.toString(16)} - isStylus=${isStylus}, is47Byte=${is47Byte}, is32Byte=${is32Byte}`);
+    }
+
+    if (isStylus) {
+      // Stylus packet is 47 bytes
+      const frameLen = 47;
+      const endIdx = i + frameLen;
+
+      if (endIdx <= allData.length) {
+        const frameData = allData.slice(i, endIdx);
+        const timestamp = allTimes[i] || 0;
+        const frame = parseStylusFrameFromData(frameData, timestamp);
+
+        if (frame) {
+          frames.push(frame);
+          stylusCount++;
+          console.log(`parseSaleaeCSV: parsed stylus frame at byte ${i}, stylus.state=${frame.stylus?.state}, x=${frame.stylus?.x}, y=${frame.stylus?.y}`);
+        }
+        i = endIdx;
+        frameIndex++;
+      } else {
+        i++;
+      }
+    } else if (is47Byte || is32Byte) {
       const packetType: 47 | 32 = is47Byte ? 47 : 32;
       const frameLen = packetType;
       const endIdx = i + frameLen;
@@ -178,6 +260,7 @@ function parseSaleaeCSVInternal(content: string, supportedAddrs: number[]): Fing
 
         if (frame) {
           frames.push(frame);
+          fingerCount++;
           console.log(`parseSaleaeCSV: parsed frame ${frameIndex} at byte ${i}, type ${packetType}, fingerCount: ${frame.fingerCount}`);
         }
         i = endIdx;
@@ -190,7 +273,7 @@ function parseSaleaeCSVInternal(content: string, supportedAddrs: number[]): Fing
     }
   }
 
-  console.log('parseSaleaeCSV: total frames parsed:', frames.length);
+  console.log(`parseSaleaeCSV: total frames parsed: ${frames.length} (stylus: ${stylusCount}, finger: ${fingerCount})`);
   return frames;
 }
 

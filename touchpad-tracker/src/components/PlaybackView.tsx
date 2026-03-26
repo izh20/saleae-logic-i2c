@@ -3,8 +3,12 @@ import {
   FingerFrame,
   FingerTrajectory,
   TouchState,
+  StylusState,
   FINGER_COLORS,
+  STYLUS_COLOR,
+  STYLUS_HOVER_COLOR,
   TouchpadConfig,
+  StylusSlot,
 } from '../types/finger';
 
 interface PlaybackViewProps {
@@ -18,6 +22,7 @@ interface PlaybackViewProps {
 const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onClearRef, onStepModeRef, onDirectFrameRef }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const trajectoriesRef = useRef<Map<number, FingerTrajectory>>(new Map());
+  const stylusTrajectoryRef = useRef<{ x: number; y: number; state: StylusState }[]>([]);
   const animationFrameRef = useRef<number | null>(null);
 
   // Step mode state - in step mode, only show current frame points
@@ -29,6 +34,7 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
   const [scantime, setScantime] = useState(0);
   const [keyState, setKeyState] = useState(0);
   const [activeFingers, setActiveFingers] = useState<FingerSlot[]>([]);
+  const [stylusData, setStylusData] = useState<StylusSlot | null>(null);
 
   const lastScantimeRef = useRef<number>(0);
 
@@ -80,15 +86,57 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
         ctx.fill();
       }
     });
+
+    // Draw stylus trajectory
+    const stylusTrajectory = stylusTrajectoryRef.current;
+    console.log('[PlaybackView] draw - stylusTrajectory.length:', stylusTrajectory.length);
+    if (stylusTrajectory.length > 0) {
+      console.log('[PlaybackView] drawing stylus trajectory with', stylusTrajectory.length, 'points');
+      for (let i = 0; i < stylusTrajectory.length; i++) {
+        const pt = stylusTrajectory[i];
+        const x = (pt.x / maxX) * canvas.width;
+        const y = (pt.y / maxY) * canvas.height;
+
+        // Draw line from previous point to current point
+        if (i > 0) {
+          const prevPt = stylusTrajectory[i - 1];
+          const prevX = (prevPt.x / maxX) * canvas.width;
+          const prevY = (prevPt.y / maxY) * canvas.height;
+
+          const ptColor = pt.state === StylusState.Tip ? STYLUS_COLOR : STYLUS_HOVER_COLOR;
+          ctx.beginPath();
+          ctx.strokeStyle = ptColor;
+          ctx.lineWidth = pt.state === StylusState.Tip ? 1 : 1;
+          ctx.moveTo(prevX, prevY);
+          ctx.lineTo(x, y);
+          ctx.stroke();
+        }
+
+        // Draw point as circle
+        const radius = pt.state === StylusState.Tip ? 4 : 2;
+        const ptColor = pt.state === StylusState.Tip ? STYLUS_COLOR : STYLUS_HOVER_COLOR;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = ptColor;
+        ctx.fill();
+      }
+    }
   }, [config]);
 
   // Handle finger frame update - exposed via ref
   const handleFrame = useCallback((frame: FingerFrame) => {
     const trajectories = trajectoriesRef.current;
+    const stylusTrajectory = stylusTrajectoryRef.current;
+
+    // Debug: log stylus data
+    if (frame.stylus) {
+      console.log('[PlaybackView] handleFrame - stylus:', frame.stylus);
+    }
 
     // In step mode, clear trajectories first and only show current frame points
     if (isStepMode) {
       trajectories.clear();
+      stylusTrajectory.length = 0;
     }
 
     // Calculate frame rate from scantime
@@ -110,19 +158,22 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
       (slot.state === TouchState.FingerTouch || slot.state === TouchState.LargeTouch)
     );
 
-    // Update display state - only show if there are active fingers
-    if (active.length > 0) {
+    // Update display state - show if there are active fingers or stylus
+    const hasStylus = frame.stylus && (frame.stylus.state === StylusState.Hover || frame.stylus.state === StylusState.Tip);
+    if (active.length > 0 || hasStylus) {
       setFingerCount(active.length);
       setScantime(frame.scantime);
       setKeyState(frame.keyState ?? 0);
       setActiveFingers(active);
+      setStylusData(frame.stylus && hasStylus ? frame.stylus : null);
     } else {
-      // No active fingers, clear display
+      // No active fingers or stylus, clear display
       setFingerCount(0);
       setFrameRate(0);
       setScantime(0);
       setKeyState(0);
       setActiveFingers([]);
+      setStylusData(null);
     }
 
     // Process finger slots
@@ -131,6 +182,7 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
 
       if (x === 0 && y === 0) continue;
 
+      // Finger release clears that finger's trajectory
       if (state === TouchState.FingerRelease || state === TouchState.LargeRelease) {
         trajectories.delete(fingerId);
       } else if (state === TouchState.FingerTouch || state === TouchState.LargeTouch) {
@@ -147,12 +199,28 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
       }
     }
 
+    // Process stylus data - no longer clearing on release
+    if (frame.stylus) {
+      const { state, x, y } = frame.stylus;
+      console.log('[PlaybackView] processing stylus - state:', state, 'StylusState.Hover:', StylusState.Hover, 'StylusState.Tip:', StylusState.Tip, 'match:', state === StylusState.Hover || state === StylusState.Tip);
+      if (x !== 0 || y !== 0) {
+        if (state === StylusState.Hover || state === StylusState.Tip) {
+          stylusTrajectory.push({ x, y, state });
+          console.log('[PlaybackView] pushed to trajectory, length now:', stylusTrajectory.length);
+          if (stylusTrajectory.length > 1000) {
+            stylusTrajectory.splice(0, 500);
+          }
+        }
+      }
+    }
+
     draw();
   }, [draw, isStepMode]);
 
   // Clear trajectories function
   const clearTrajectories = useCallback(() => {
     trajectoriesRef.current.clear();
+    stylusTrajectoryRef.current = [];
     draw();
   }, [draw]);
 
@@ -204,6 +272,19 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
     return () => {
       window.removeEventListener('resize', resizeCanvas);
     };
+  }, [draw]);
+
+  // C key to clear all trajectories
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'c' || e.key === 'C') {
+        trajectoriesRef.current.clear();
+        stylusTrajectoryRef.current = [];
+        draw();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [draw]);
 
   const stateNames = ['LargeRelease', 'FingerRelease', 'LargeTouch', 'FingerTouch'];
@@ -264,6 +345,11 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
             F{slot.fingerId}: X={slot.x} Y={slot.y}
           </div>
         ))}
+        {stylusData && (
+          <div style={{ color: STYLUS_COLOR }}>
+            Stylus: X={stylusData.x} Y={stylusData.y} P={stylusData.tipPressure}
+          </div>
+        )}
         <div style={{ marginLeft: 'auto' }}>
           Max X: {config.maxX}, Max Y: {config.maxY}
         </div>

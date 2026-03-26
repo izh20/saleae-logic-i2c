@@ -3,8 +3,12 @@ import {
   FingerFrame,
   FingerTrajectory,
   TouchState,
+  StylusState,
   FINGER_COLORS,
+  STYLUS_COLOR,
+  STYLUS_HOVER_COLOR,
   TouchpadConfig,
+  StylusSlot,
 } from '../types/finger';
 
 interface TrajectoryViewProps {
@@ -15,6 +19,7 @@ interface TrajectoryViewProps {
 const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const trajectoriesRef = useRef<Map<number, FingerTrajectory>>(new Map());
+  const stylusTrajectoryRef = useRef<{ x: number; y: number; state: StylusState }[]>([]);
   const animationFrameRef = useRef<number | null>(null);
 
   // Stats state for display - batch all state updates
@@ -24,6 +29,7 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
     scantime: 0,
     keyState: 0,
     activeFingers: [] as FingerSlot[],
+    stylus: null as StylusSlot | null,
   });
 
   const lastScantimeRef = useRef<number>(0);
@@ -76,11 +82,45 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
         ctx.fill();
       }
     });
+
+    // Draw stylus trajectory
+    const stylusTrajectory = stylusTrajectoryRef.current;
+    if (stylusTrajectory.length > 0) {
+      for (let i = 0; i < stylusTrajectory.length; i++) {
+        const pt = stylusTrajectory[i];
+        const x = (pt.x / maxX) * canvas.width;
+        const y = (pt.y / maxY) * canvas.height;
+
+        // Draw line from previous point to current point
+        if (i > 0) {
+          const prevPt = stylusTrajectory[i - 1];
+          const prevX = (prevPt.x / maxX) * canvas.width;
+          const prevY = (prevPt.y / maxY) * canvas.height;
+
+          const ptColor = pt.state === StylusState.Tip ? STYLUS_COLOR : STYLUS_HOVER_COLOR;
+          ctx.beginPath();
+          ctx.strokeStyle = ptColor;
+          ctx.lineWidth = pt.state === StylusState.Tip ? 1 : 1;
+          ctx.moveTo(prevX, prevY);
+          ctx.lineTo(x, y);
+          ctx.stroke();
+        }
+
+        // Draw point as circle
+        const radius = pt.state === StylusState.Tip ? 4 : 2;
+        const ptColor = pt.state === StylusState.Tip ? STYLUS_COLOR : STYLUS_HOVER_COLOR;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = ptColor;
+        ctx.fill();
+      }
+    }
   }, [config]);
 
   // Handle finger frame update
   const handleFingerFrame = useCallback((frame: FingerFrame) => {
     const trajectories = trajectoriesRef.current;
+    const stylusTrajectory = stylusTrajectoryRef.current;
 
     // Calculate frame rate from scantime (units of 100us, range 0-65535)
     const currentScantime = frame.scantime;
@@ -101,6 +141,7 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
       const { fingerId, state, x, y } = slot;
       if (x === 0 && y === 0) continue;
 
+      // Finger release clears that finger's trajectory
       if (state === TouchState.FingerRelease || state === TouchState.LargeRelease) {
         trajectories.delete(fingerId);
       } else if (state === TouchState.FingerTouch || state === TouchState.LargeTouch) {
@@ -116,6 +157,19 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
       }
     }
 
+    // Process stylus data - no longer clearing on release
+    if (frame.stylus) {
+      const { state, x, y } = frame.stylus;
+      if (x !== 0 || y !== 0) {
+        if (state === StylusState.Hover || state === StylusState.Tip) {
+          stylusTrajectory.push({ x, y, state });
+          if (stylusTrajectory.length > 1000) {
+            stylusTrajectory.splice(0, 500);
+          }
+        }
+      }
+    }
+
     // Filter active fingers for display
     const active = frame.slots.filter(slot =>
       !(slot.x === 0 && slot.y === 0) &&
@@ -124,11 +178,12 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
 
     // Batch update state and draw immediately
     setStats({
-      frameRate: active.length > 0 ? frameRate : 0,
+      frameRate: active.length > 0 || frame.stylus ? frameRate : 0,
       fingerCount: active.length,
-      scantime: active.length > 0 ? frame.scantime : 0,
-      keyState: active.length > 0 ? (frame.keyState ?? 0) : 0,
+      scantime: active.length > 0 || frame.stylus ? frame.scantime : 0,
+      keyState: active.length > 0 || frame.stylus ? (frame.keyState ?? 0) : 0,
       activeFingers: active,
+      stylus: frame.stylus && (frame.stylus.state === StylusState.Hover || frame.stylus.state === StylusState.Tip) ? frame.stylus : null,
     });
 
     // Draw immediately for lowest latency
@@ -175,6 +230,22 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
       }
     };
   }, [draw, handleFingerFrame, onFrameRef]);
+
+  // C key to clear all trajectories, K key to clear only stylus trajectory
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'c' || e.key === 'C') {
+        trajectoriesRef.current.clear();
+        stylusTrajectoryRef.current = [];
+        draw();
+      } else if (e.key === 'k' || e.key === 'K') {
+        stylusTrajectoryRef.current = [];
+        draw();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [draw]);
 
   const stateNames = ['LargeRelease', 'FingerRelease', 'LargeTouch', 'FingerTouch'];
 
@@ -233,6 +304,11 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
             F{slot.fingerId}: X={slot.x} Y={slot.y}
           </div>
         ))}
+        {stats.stylus && (
+          <div style={{ color: STYLUS_COLOR }}>
+            Stylus: X={stats.stylus.x} Y={stats.stylus.y} P={stats.stylus.tipPressure}
+          </div>
+        )}
         <div style={{ marginLeft: 'auto' }}>
           Max X: {config.maxX}, Max Y: {config.maxY}
         </div>

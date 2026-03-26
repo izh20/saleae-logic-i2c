@@ -29,6 +29,7 @@ export interface FingerFrame {
   fingerCount: number;
   scantime: number;
   keyState?: number;
+  stylus?: StylusSlot;    // 笔数据
 }
 
 // Point for trajectory rendering with touch state
@@ -52,6 +53,24 @@ export enum TouchState {
   FingerTouch = 3,     // 手指按下
 }
 
+// Stylus state machine
+export enum StylusState {
+  Release = 0x00,    // 释放
+  Hover = 0x20,       // 悬停
+  Tip = 0x21,         // 接触
+}
+
+// Stylus slot data structure
+export interface StylusSlot {
+  stylusId: number;      // 固定 0x80
+  state: StylusState;    // 0x20/0x21/0x00
+  x: number;             // 16-bit 坐标
+  y: number;             // 16-bit 坐标
+  tipPressure: number;   // 16-bit 压力
+  xTilt: number;         // 16-bit X倾斜
+  yTilt: number;         // 16-bit Y倾斜
+}
+
 // Finger colors for visualization
 export const FINGER_COLORS = [
   '#ff6b6b', // Finger 0 - Red
@@ -60,6 +79,10 @@ export const FINGER_COLORS = [
   '#96ceb4', // Finger 3 - Sage
   '#ffeaa7', // Finger 4 - Yellow
 ];
+
+// Stylus colors for visualization
+export const STYLUS_COLOR = '#ff00ff';      // Magenta - Tip (contact)
+export const STYLUS_HOVER_COLOR = '#00ffff'; // Cyan - Hover
 
 // Line width based on touch state
 export const getLineWidth = (state: TouchState): number => {
