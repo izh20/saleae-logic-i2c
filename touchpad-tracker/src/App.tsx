@@ -15,6 +15,7 @@ const App: React.FC = () => {
   const [totalFrames, setTotalFrames] = useState(0);
   const [playbackFrame, setPlaybackFrame] = useState<FingerFrame | null>(null);
   const [i2cAddress, setI2cAddress] = useState<string>('0x2C');
+  const [showHelp, setShowHelp] = useState(false);
 
   // Ref to hold the callback for sending frames to TrajectoryView
   const trajectoriesCallbackRef = useRef<(frame: FingerFrame) => void | null>(null);
@@ -105,6 +106,10 @@ const App: React.FC = () => {
         case 'r':
         case 'R':
           handleRecClick();
+          break;
+        case 'h':
+        case 'H':
+          setShowHelp(prev => !prev);
           break;
         case ' ':
           if (playbackMode) {
@@ -389,6 +394,92 @@ const App: React.FC = () => {
           }}
           onSpeedChange={(speed) => player.setSpeed(speed as PlaybackSpeed)}
         />
+      )}
+
+      {/* Help modal */}
+      {showHelp && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+          }}
+          onClick={() => setShowHelp(false)}
+        >
+          <div
+            style={{
+              backgroundColor: '#2d2d2d',
+              borderRadius: 8,
+              padding: 24,
+              maxWidth: 500,
+              color: '#d4d4d4',
+              fontFamily: 'monospace',
+              fontSize: 13,
+              lineHeight: 1.6,
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ color: '#6a9955', fontSize: 16, fontWeight: 'bold', marginBottom: 16 }}>
+              Touchpad Tracker Help
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>快捷键</div>
+              <table>
+                <tbody>
+                  <tr><td style={{ paddingRight: 16 }}>H</td><td>显示/隐藏帮助</td></tr>
+                  <tr><td style={{ paddingRight: 16 }}>R</td><td>开始/停止录制</td></tr>
+                  <tr><td style={{ paddingRight: 16 }}>C</td><td>清除所有轨迹</td></tr>
+                  <tr><td style={{ paddingRight: 16 }}>K</td><td>仅清除笔轨迹</td></tr>
+                  <tr><td style={{ paddingRight: 16 }}>空格</td><td>播放/暂停（回放模式）</td></tr>
+                  <tr><td style={{ paddingRight: 16 }}>←</td><td>逐帧后退（回放模式）</td></tr>
+                  <tr><td style={{ paddingRight: 16 }}>→</td><td>逐帧前进（回放模式）</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>手指颜色</div>
+              <div><span style={{ color: '#ff6b6b' }}>■</span> 指0 (红色)</div>
+              <div><span style={{ color: '#4ecdc4' }}>■</span> 指1 (青色)</div>
+              <div><span style={{ color: '#45b7d1' }}>■</span> 指2 (蓝色)</div>
+              <div><span style={{ color: '#96ceb4' }}>■</span> 指3 (绿色)</div>
+              <div><span style={{ color: '#ffeaa7' }}>■</span> 指4 (黄色)</div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>手指状态</div>
+              <div>LargeTouch: 大面积按下</div>
+              <div>FingerTouch: 手指按下</div>
+              <div>FingerRelease: 手指抬起（清除轨迹）</div>
+              <div>LargeRelease: 大面积抬起（清除轨迹）</div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>笔状态颜色</div>
+              <div><span style={{ color: '#ffffff' }}>■ 白色</span> - Tip（接触）</div>
+              <div><span style={{ color: '#ff0000' }}>■ 红色</span> - Hover（悬停）</div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>笔解析模式</div>
+              <div><strong>TP Mode:</strong> 使用字节3的状态值</div>
+              <div><strong>MCU Mode:</strong> 根据压力值判断</div>
+              <div style={{ fontSize: 12, color: '#808080' }}>pressure &gt;= 100 为 Tip，&lt; 100 为 Hover</div>
+            </div>
+
+            <div style={{ color: '#808080', fontSize: 12 }}>
+              按 H 或点击外部区域关闭
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
