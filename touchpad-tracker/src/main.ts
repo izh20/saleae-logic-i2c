@@ -16,6 +16,9 @@ let udpServer: dgram.Socket | null = null;
 const UDP_HOST = '127.0.0.1';
 const UDP_PORT = 50000;
 
+// Debug mode: set to true to enable console logging
+const DEBUG = false;
+
 // Parse hex string to number
 function parseHexOrDec(val: string): number {
   if (val.startsWith('0x') || val.startsWith('0X')) {
@@ -145,11 +148,11 @@ function startUdpServer() {
   udpServer.on('message', (msg, _rinfo) => {
     try {
       const message = JSON.parse(msg.toString());
-      console.log('UDP received:', message.type, message.data);
+      if (DEBUG) console.log('UDP received:', message.type, message.data);
 
       if (message.type === 'TX' && message.data) {
         const dataArray = message.data.data || [];
-        console.log('TX data array:', dataArray);
+        if (DEBUG) console.log('TX data array:', dataArray);
         const timestamp = Date.now();
 
         // Try to parse as finger frame first, then as stylus frame
@@ -159,7 +162,7 @@ function startUdpServer() {
         }
 
         if (frame) {
-          console.log('Parsed frame:', frame);
+          if (DEBUG) console.log('Parsed frame:', frame);
           if (mainWindow) {
             mainWindow.webContents.send('finger-frame', frame);
           }
@@ -247,8 +250,8 @@ const createWindow = () => {
     );
   }
 
-  // Open the DevTools.
-  mainWindow.webContents.openDevTools();
+  // Open the DevTools (disabled by default for performance)
+  // mainWindow.webContents.openDevTools();
 
   mainWindow.on('closed', () => {
     mainWindow = null;
