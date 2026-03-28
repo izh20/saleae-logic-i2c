@@ -64,7 +64,6 @@ const App: React.FC = () => {
     // Load configuration from main process
     window.electronAPI.getConfig().then((cfg) => {
       setConfig(cfg);
-      console.log('Config loaded:', cfg);
     });
 
     // Listen for first finger frame to indicate connection
@@ -93,6 +92,11 @@ const App: React.FC = () => {
       clearTimeout(timeout);
     };
   }, [playbackMode, isRecording, addFrame]);
+
+  // Save config when it changes
+  useEffect(() => {
+    window.electronAPI.saveConfig(config);
+  }, [config]);
 
   // Keyboard shortcuts
   useEffect(() => {

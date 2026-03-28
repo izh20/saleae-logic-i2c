@@ -7,8 +7,8 @@ export interface TouchpadConfig {
 
 // Default configuration
 export const DEFAULT_CONFIG: TouchpadConfig = {
-  maxX: 3000,
-  maxY: 2000,
+  maxX: 4000,
+  maxY: 3000,
   stylusParseMode: 'tp',
 };
 

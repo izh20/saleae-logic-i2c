@@ -2,7 +2,15 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'node:path';
 import dgram from 'node:dgram';
 import started from 'electron-squirrel-startup';
-import { FingerFrame, FingerSlot, TouchState, StylusState, StylusSlot, DEFAULT_CONFIG } from './types/finger';
+import Store from 'electron-store';
+import { FingerFrame, FingerSlot, TouchState, StylusState, StylusSlot, DEFAULT_CONFIG, TouchpadConfig } from './types/finger';
+
+// Initialize electron-store for config persistence
+const store = new Store<{ config: TouchpadConfig }>({
+  defaults: {
+    config: DEFAULT_CONFIG,
+  },
+});
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -184,7 +192,12 @@ function startUdpServer() {
 
 // IPC handler for config
 ipcMain.handle('get-config', () => {
-  return DEFAULT_CONFIG;
+  return store.get('config');
+});
+
+// IPC handler for saving config
+ipcMain.handle('save-config', (_event, config: TouchpadConfig) => {
+  store.set('config', config);
 });
 
 // IPC handler for saving recording

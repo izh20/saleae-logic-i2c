@@ -16,7 +16,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Get touchpad configuration
   getConfig: (): Promise<TouchpadConfig> => {
-    return ipcRenderer.invoke('get-config').then(() => DEFAULT_CONFIG);
+    return ipcRenderer.invoke('get-config');
+  },
+
+  // Save touchpad configuration
+  saveConfig: (config: TouchpadConfig): Promise<void> => {
+    return ipcRenderer.invoke('save-config', config);
   },
 
   // Save recording to file
