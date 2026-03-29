@@ -36,7 +36,7 @@ jobs:
           cache-dependency-path: touchpad-tracker/package-lock.json
 
       - name: Install dependencies
-        run: npm install
+        run: rm -rf node_modules package-lock.json && npm install
         working-directory: touchpad-tracker
 
       - name: Verify electron-store installed
