@@ -39,6 +39,10 @@ jobs:
         run: npm install
         working-directory: touchpad-tracker
 
+      - name: Verify electron-store installed
+        run: ls node_modules/electron-store 2>/dev/null || echo "electron-store NOT FOUND"
+        working-directory: touchpad-tracker
+
       - name: Build application
         run: npm run make
         working-directory: touchpad-tracker
