@@ -19,12 +19,17 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+      ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+      NODE_TLS_REJECT_UNAUTHORIZED: '0'
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: 'npm'
@@ -35,10 +40,6 @@ jobs:
         working-directory: touchpad-tracker
 
       - name: Build application
-        env:
-          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
-          NODE_TLS_REJECT_UNAUTHORIZED: '0'
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
         run: npm run make
         working-directory: touchpad-tracker
 
