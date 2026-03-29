@@ -36,7 +36,7 @@ jobs:
           cache-dependency-path: touchpad-tracker/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
         working-directory: touchpad-tracker
 
       - name: Build application
