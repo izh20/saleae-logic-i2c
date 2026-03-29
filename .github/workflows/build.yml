@@ -35,6 +35,9 @@ jobs:
         working-directory: touchpad-tracker
 
       - name: Build application
+        env:
+          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+          NODE_TLS_REJECT_UNAUTHORIZED: '0'
         run: npm run make
         working-directory: touchpad-tracker
 
