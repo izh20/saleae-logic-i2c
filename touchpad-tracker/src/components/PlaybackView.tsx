@@ -82,8 +82,15 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
         const radius = pt.state === TouchState.LargeTouch ? 4 : 2;
         ctx.beginPath();
         ctx.arc(x, y, radius, 0, Math.PI * 2);
-        ctx.fillStyle = color;
-        ctx.fill();
+        if (pt.state === TouchState.LargeTouch) {
+          // LargeTouch: hollow (outline only)
+          ctx.strokeStyle = color;
+          ctx.stroke();
+        } else {
+          // FingerTouch: solid (filled)
+          ctx.fillStyle = color;
+          ctx.fill();
+        }
       }
     });
 
@@ -198,10 +205,6 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
           trajectories.set(fingerId, trajectory);
         }
         trajectory.points.push({ x, y, state });
-
-        if (trajectory.points.length > 1000) {
-          trajectory.points = trajectory.points.slice(-500);
-        }
       }
     }
 
