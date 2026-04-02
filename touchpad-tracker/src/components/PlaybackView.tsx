@@ -221,9 +221,6 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
       if (x !== 0 || y !== 0) {
         if (effectiveState === StylusState.Hover || effectiveState === StylusState.Tip) {
           stylusTrajectory.push({ x, y, state: effectiveState });
-          if (stylusTrajectory.length > 1000) {
-            stylusTrajectory.splice(0, 500);
-          }
         }
       }
     }

@@ -175,9 +175,6 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
       if (x !== 0 || y !== 0) {
         if (effectiveState === StylusState.Hover || effectiveState === StylusState.Tip) {
           stylusTrajectory.push({ x, y, state: effectiveState });
-          if (stylusTrajectory.length > 1000) {
-            stylusTrajectory.splice(0, 500);
-          }
         }
       }
     }
