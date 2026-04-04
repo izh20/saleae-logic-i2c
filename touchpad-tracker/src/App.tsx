@@ -35,6 +35,14 @@ const App: React.FC = () => {
     trajectoriesCallbackRef.current = callback;
   }, []);
 
+  // Keep refs in sync with latest values for stable subscription
+  const playbackModeRef = useRef(playbackMode);
+  const isRecordingRef = useRef(isRecording);
+  const addFrameRef = useRef(addFrame);
+  useEffect(() => { playbackModeRef.current = playbackMode; }, [playbackMode]);
+  useEffect(() => { isRecordingRef.current = isRecording; }, [isRecording]);
+  useEffect(() => { addFrameRef.current = addFrame; }, [addFrame]);
+
   // Handle REC button click
   const handleRecClick = () => {
     if (isRecording) {
@@ -59,26 +67,25 @@ const App: React.FC = () => {
     }
   };
 
-  // Handle live frames from UDP
+  // Handle live frames from UDP - subscribe once, read refs for latest values
   useEffect(() => {
     // Load configuration from main process
     window.electronAPI.getConfig().then((cfg) => {
       setConfig(cfg);
     });
 
-    // Listen for first finger frame to indicate connection
+    // Listen for finger frames
     const unsubscribe = window.electronAPI.onFingerFrame((frame) => {
-      console.log('Renderer received finger frame:', frame);
       setConnected(true);
 
       // In live mode, send frame to TrajectoryView
-      if (!playbackMode && trajectoriesCallbackRef.current) {
+      if (!playbackModeRef.current && trajectoriesCallbackRef.current) {
         trajectoriesCallbackRef.current(frame);
       }
 
       // In recording mode, add frame to recording
-      if (isRecording) {
-        addFrame(frame);
+      if (isRecordingRef.current) {
+        addFrameRef.current(frame);
       }
     });
 
@@ -91,7 +98,7 @@ const App: React.FC = () => {
       unsubscribe();
       clearTimeout(timeout);
     };
-  }, [playbackMode, isRecording, addFrame]);
+  }, []);
 
   // Save config when it changes
   useEffect(() => {

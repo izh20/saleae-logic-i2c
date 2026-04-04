@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import {
   FingerFrame,
+  FingerSlot,
   FingerTrajectory,
   TouchState,
   StylusState,
@@ -33,6 +34,15 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
   });
 
   const lastScantimeRef = useRef<number>(0);
+  const pendingDrawRef = useRef(false);
+  const statsRef = useRef({
+    frameRate: 0,
+    fingerCount: 0,
+    scantime: 0,
+    keyState: 0,
+    activeFingers: [] as FingerSlot[],
+    stylus: null as StylusSlot | null,
+  });
 
   // Draw function
   const draw = useCallback(() => {
@@ -191,18 +201,25 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
       effectiveStylusState = frame.stylus.tipPressure >= 100 ? StylusState.Tip : StylusState.Hover;
     }
 
-    // Batch update state and draw immediately
-    setStats({
+    // Store stats in ref (don't trigger React render on every frame)
+    statsRef.current = {
       frameRate: active.length > 0 || frame.stylus ? frameRate : 0,
       fingerCount: active.length,
       scantime: active.length > 0 || frame.stylus ? frame.scantime : 0,
       keyState: active.length > 0 || frame.stylus ? (frame.keyState ?? 0) : 0,
       activeFingers: active,
       stylus: frame.stylus && (effectiveStylusState === StylusState.Hover || effectiveStylusState === StylusState.Tip) ? frame.stylus : null,
-    });
+    };
 
-    // Draw immediately for lowest latency
-    draw();
+    // Throttle rendering via RAF - at most ~60fps
+    if (!pendingDrawRef.current) {
+      pendingDrawRef.current = true;
+      requestAnimationFrame(() => {
+        pendingDrawRef.current = false;
+        draw();
+        setStats(statsRef.current);
+      });
+    }
   }, [draw]);
 
   // Set up canvas size and subscriptions
