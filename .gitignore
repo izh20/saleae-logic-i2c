@@ -14,3 +14,7 @@ touchpad-tracker/out/
 
 # IDE / Claude
 .claude/
+
+# Editor and local prompts
+.vscode/
+.github/prompts/
