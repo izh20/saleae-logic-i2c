@@ -10,6 +10,10 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    // 指定多平台图标基础路径（不包含扩展名）：
+    // macOS 使用 .icns，Windows 使用 .ico，Linux 使用 .png
+    // 在项目中放置路径： touchpad-tracker/assets/icon.icns 等
+    icon: 'assets/icon',
   },
   rebuildConfig: {},
   makers: [
