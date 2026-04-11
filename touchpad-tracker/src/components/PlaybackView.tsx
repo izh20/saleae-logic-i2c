@@ -11,19 +11,50 @@ import {
   StylusSlot,
 } from '../types/finger';
 
+// Frame diff for undo/redo
+interface FrameDiff {
+  // finger release 事件：删除的轨迹（恢复时原样放回）
+  deletedFingerTrajectories: Map<number, FingerTrajectory>;
+  // finger touch 事件：追加了点的 fingerId 列表（撤销时 pop 最后一个点）
+  appendedFingerIds: number[];
+  // stylus touch/hover 事件：追加前的点数量（撤销时截断到该数量）
+  stylusPointsBefore: number;
+  // stylus release 事件：删除前的完整 stylus 轨迹（恢复时原样放回）
+  deletedStylusTrajectory: { x: number; y: number; state: StylusState }[] | null;
+}
+
+// Snapshot for fast seek
+interface Snapshot {
+  index: number;
+  trajectories: Map<number, FingerTrajectory>;
+  stylusTrajectory: { x: number; y: number; state: StylusState }[];
+  undoStack: FrameDiff[];
+}
+
 interface PlaybackViewProps {
   config: TouchpadConfig;
   currentFrame: FingerFrame | null;
   onClearRef?: (callback: () => void) => void;
   onStepModeRef?: (callback: (isStepMode: boolean) => void) => void;
   onDirectFrameRef?: (callback: (frame: FingerFrame) => void) => void;
+  onUndoFrameRef?: (callback: () => void) => void;
+  onFrameIndexRef?: (callback: (index: number) => void) => void;
 }
 
-const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onClearRef, onStepModeRef, onDirectFrameRef }) => {
+const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onClearRef, onStepModeRef, onDirectFrameRef, onUndoFrameRef, onFrameIndexRef }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const trajectoriesRef = useRef<Map<number, FingerTrajectory>>(new Map());
   const stylusTrajectoryRef = useRef<{ x: number; y: number; state: StylusState }[]>([]);
   const animationFrameRef = useRef<number | null>(null);
+
+  // Undo stack for O(1) frame undo
+  const undoStackRef = useRef<FrameDiff[]>([]);
+  // Snapshots for fast seek (every 200 frames)
+  const SNAPSHOT_INTERVAL = 200;
+  const snapshotsRef = useRef<Snapshot[]>([]);
+  // Current frame index (set by usePlayer)
+  const currentFrameIndexRef = useRef<number>(0);
+
 
   // Step mode state - in step mode, only show current frame points
   const [isStepMode, setIsStepMode] = useState(false);
@@ -130,15 +161,117 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
     }
   }, [config]);
 
-  // Handle finger frame update - exposed via ref
-  const handleFrame = useCallback((frame: FingerFrame) => {
+  // Find nearest snapshot at or before the given index
+  const findNearestSnapshot = useCallback((index: number): Snapshot | null => {
+    const snapshots = snapshotsRef.current;
+    if (snapshots.length === 0) return null;
+    // Binary search for the nearest snapshot at or before index
+    let left = 0;
+    let right = snapshots.length - 1;
+    let result: Snapshot | null = null;
+    while (left <= right) {
+      const mid = Math.floor((left + right) / 2);
+      if (snapshots[mid].index <= index) {
+        result = snapshots[mid];
+        left = mid + 1;
+      } else {
+        right = mid - 1;
+      }
+    }
+    return result;
+  }, []);
+
+  // Take a snapshot of current trajectories
+  const takeSnapshot = useCallback((index: number) => {
+    const snapshots = snapshotsRef.current;
+    // Only take snapshot if interval reached
+    if (snapshots.length > 0 && index - snapshots[snapshots.length - 1].index < SNAPSHOT_INTERVAL) {
+      return;
+    }
+    // Deep copy trajectories
+    const trajectoriesCopy = new Map<number, FingerTrajectory>();
+    trajectoriesRef.current.forEach((traj, id) => {
+      trajectoriesCopy.set(id, { ...traj, points: [...traj.points] });
+    });
+    const stylusCopy = [...stylusTrajectoryRef.current];
+    const snapshot: Snapshot = {
+      index,
+      trajectories: trajectoriesCopy,
+      stylusTrajectory: stylusCopy,
+      undoStack: [...undoStackRef.current],
+    };
+    snapshots.push(snapshot);
+    console.log('[PlaybackView] takeSnapshot at', index, 'total snapshots:', snapshots.length);
+  }, []);
+
+  // Restore a snapshot
+  const restoreSnapshot = useCallback((snapshot: Snapshot) => {
+    // Deep copy from snapshot
+    trajectoriesRef.current.clear();
+    snapshot.trajectories.forEach((traj, id) => {
+      trajectoriesRef.current.set(id, { ...traj, points: [...traj.points] });
+    });
+    stylusTrajectoryRef.current = [...snapshot.stylusTrajectory];
+    undoStackRef.current = [...snapshot.undoStack];
+    console.log('[PlaybackView] restoreSnapshot at', snapshot.index, 'undoStack length:', undoStackRef.current.length);
+    draw();
+  }, [draw]);
+
+  // Undo one frame - O(1) operation
+  const undoFrame = useCallback(() => {
+    const diff = undoStackRef.current.pop();
+    if (!diff) {
+      console.log('[PlaybackView] undoFrame - nothing to undo');
+      return;
+    }
+    console.log('[PlaybackView] undoFrame - undoing', diff.appendedFingerIds.length, 'fingers, stylusPointsBefore:', diff.stylusPointsBefore);
     const trajectories = trajectoriesRef.current;
     const stylusTrajectory = stylusTrajectoryRef.current;
 
-    // Debug: log stylus data
-    if (frame.stylus) {
-      console.log('[PlaybackView] handleFrame - stylus:', frame.stylus);
+    // Restore deleted finger trajectories
+    diff.deletedFingerTrajectories.forEach((traj, fingerId) => {
+      trajectories.set(fingerId, { ...traj, points: [...traj.points] });
+    });
+
+    // Pop appended finger points
+    for (const fingerId of diff.appendedFingerIds) {
+      const traj = trajectories.get(fingerId);
+      if (traj) {
+        traj.points.pop();
+        if (traj.points.length === 0) {
+          trajectories.delete(fingerId);
+        }
+      }
     }
+
+    // Restore stylus trajectory
+    if (diff.deletedStylusTrajectory !== null) {
+      // Was a release, restore full trajectory
+      stylusTrajectoryRef.current = [...diff.deletedStylusTrajectory];
+    } else if (diff.stylusPointsBefore !== undefined) {
+      // Was touch/hover, truncate to previous size
+      stylusTrajectory.length = diff.stylusPointsBefore;
+    }
+
+    // Update current frame index
+    currentFrameIndexRef.current -= 1;
+
+    draw();
+  }, [draw]);
+
+  // Handle finger frame update - exposed via ref
+  const handleFrame = useCallback((frame: FingerFrame) => {
+    console.log('[PlaybackView] handleFrame called, slots:', frame.slots.length, 'stylus:', !!frame.stylus);
+    const trajectories = trajectoriesRef.current;
+    const stylusTrajectory = stylusTrajectoryRef.current;
+
+    // Build diff for undo
+    const diff: FrameDiff = {
+      deletedFingerTrajectories: new Map(),
+      appendedFingerIds: [],
+      stylusPointsBefore: stylusTrajectory.length,
+      deletedStylusTrajectory: null,
+    };
 
     // In step mode, clear trajectories first and only show current frame points
     if (isStepMode) {
@@ -197,6 +330,11 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
 
       // Finger release clears that finger's trajectory
       if (state === TouchState.FingerRelease || state === TouchState.LargeRelease) {
+        // Save deleted trajectory to diff
+        const existing = trajectories.get(fingerId);
+        if (existing) {
+          diff.deletedFingerTrajectories.set(fingerId, { ...existing, points: [...existing.points] });
+        }
         trajectories.delete(fingerId);
       } else if (state === TouchState.FingerTouch || state === TouchState.LargeTouch) {
         let trajectory = trajectories.get(fingerId);
@@ -205,10 +343,11 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
           trajectories.set(fingerId, trajectory);
         }
         trajectory.points.push({ x, y, state });
+        diff.appendedFingerIds.push(fingerId);
       }
     }
 
-    // Process stylus data - no longer clearing on release
+    // Process stylus data
     if (frame.stylus) {
       const { state, x, y, tipPressure } = frame.stylus;
 
@@ -225,13 +364,22 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
       }
     }
 
+    // Push diff to undo stack
+    undoStackRef.current.push(diff);
+
+    // Take snapshot periodically
+    const currentIndex = currentFrameIndexRef.current;
+    takeSnapshot(currentIndex);
+
     draw();
-  }, [draw, isStepMode, config.stylusParseMode]);
+  }, [draw, isStepMode, config.stylusParseMode, takeSnapshot]);
 
   // Clear trajectories function
   const clearTrajectories = useCallback(() => {
     trajectoriesRef.current.clear();
     stylusTrajectoryRef.current = [];
+    undoStackRef.current = [];
+    snapshotsRef.current = [];
     draw();
   }, [draw]);
 
@@ -256,12 +404,21 @@ const PlaybackView: React.FC<PlaybackViewProps> = ({ config, currentFrame, onCle
     }
   }, [onDirectFrameRef, handleFrame]);
 
-  // Expose handleFrame via a ref-like mechanism
+  // Register frame index callback for usePlayer to update current index
   useEffect(() => {
-    if (currentFrame) {
-      handleFrame(currentFrame);
+    if (onFrameIndexRef) {
+      onFrameIndexRef((index: number) => {
+        currentFrameIndexRef.current = index;
+      });
     }
-  }, [currentFrame, handleFrame]);
+  }, [onFrameIndexRef]);
+
+  // Register undo frame callback for usePlayer
+  useEffect(() => {
+    if (onUndoFrameRef) {
+      onUndoFrameRef(undoFrame);
+    }
+  }, [onUndoFrameRef, undoFrame]);
 
   // Set up canvas size
   useEffect(() => {
