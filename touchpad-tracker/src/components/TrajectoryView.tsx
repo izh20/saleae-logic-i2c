@@ -105,22 +105,27 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
     if (stylusTrajectory.length > 0) {
       for (let i = 0; i < stylusTrajectory.length; i++) {
         const pt = stylusTrajectory[i];
+        // Skip release break markers
+        if (pt.state === StylusState.Release) continue;
+
         const x = (pt.x / maxX) * canvas.width;
         const y = (pt.y / maxY) * canvas.height;
 
-        // Draw line from previous point to current point
+        // Draw line from previous point (skip if previous is a break marker)
         if (i > 0) {
           const prevPt = stylusTrajectory[i - 1];
-          const prevX = (prevPt.x / maxX) * canvas.width;
-          const prevY = (prevPt.y / maxY) * canvas.height;
+          if (prevPt.state !== StylusState.Release) {
+            const prevX = (prevPt.x / maxX) * canvas.width;
+            const prevY = (prevPt.y / maxY) * canvas.height;
 
-          const ptColor = pt.state === StylusState.Tip ? STYLUS_COLOR : STYLUS_HOVER_COLOR;
-          ctx.beginPath();
-          ctx.strokeStyle = ptColor;
-          ctx.lineWidth = 0.5;
-          ctx.moveTo(prevX, prevY);
-          ctx.lineTo(x, y);
-          ctx.stroke();
+            const ptColor = pt.state === StylusState.Tip ? STYLUS_COLOR : STYLUS_HOVER_COLOR;
+            ctx.beginPath();
+            ctx.strokeStyle = ptColor;
+            ctx.lineWidth = 0.5;
+            ctx.moveTo(prevX, prevY);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+          }
         }
 
         // Draw point as circle
@@ -182,10 +187,13 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
         effectiveState = tipPressure >= 100 ? StylusState.Tip : StylusState.Hover;
       }
 
-      if (x !== 0 || y !== 0) {
-        if (effectiveState === StylusState.Hover || effectiveState === StylusState.Tip) {
-          stylusTrajectory.push({ x, y, state: effectiveState });
+      if (effectiveState === StylusState.Release) {
+        // Insert break marker to prevent connecting lines across release
+        if (stylusTrajectory.length > 0 && stylusTrajectory[stylusTrajectory.length - 1].state !== StylusState.Release) {
+          stylusTrajectory.push({ x: 0, y: 0, state: StylusState.Release });
         }
+      } else if (x !== 0 || y !== 0) {
+        stylusTrajectory.push({ x, y, state: effectiveState });
       }
     }
 
