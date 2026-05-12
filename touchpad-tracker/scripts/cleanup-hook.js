@@ -16,14 +16,30 @@ module.exports = async function (forgeConfig, buildPath, electronVersion, platfo
 
   removeUnusedLocales(buildPath);
   removeUnnecessaryFiles(buildPath);
-  logSize(buildPath);
+
+  // 统计 app 目录大小
+  logSize('app code', buildPath);
+
+  // 统计 Electron 根目录大小（往上两级）
+  const appRoot = path.resolve(buildPath, '..', '..');
+  logSize('Electron root', appRoot);
 };
 
 function removeUnusedLocales(packageDir) {
   const resourceDirs = findResourceDirs(packageDir);
 
   for (const resDir of resourceDirs) {
+    const basename = path.basename(resDir);
+
+    // Remove locale .pak files (Chromium i18n data, Windows/Linux)
+    // resDir 可能是 locales/ 目录本身，也可能是其父目录
+    if (basename === 'locales') {
+      removeLocalePaks(resDir);
+      continue;
+    }
+
     // Remove .lproj locale dirs (macOS)
+    // resDir 是 Resources/ 目录，.lproj 在其下
     try {
       const entries = fs.readdirSync(resDir);
       for (const entry of entries) {
@@ -37,20 +53,31 @@ function removeUnusedLocales(packageDir) {
       }
     } catch { /* not a resources dir */ }
 
-    // Remove locale .pak files (Chromium i18n data, Windows/Linux)
+    // 也可能 locales/ 在 Resources/ 子目录下 (部分Linux构建结构)
     const localesPakDir = path.join(resDir, 'locales');
     if (fs.existsSync(localesPakDir)) {
-      try {
-        const localeFiles = fs.readdirSync(localesPakDir);
-        for (const file of localeFiles) {
-          if (file.endsWith('.pak') && !KEEP_LOCALES.has(file)) {
-            fs.rmSync(path.join(localesPakDir, file));
-            console.log('[cleanup-hook] Removed locale pak:', file);
-          }
-        }
-      } catch { /* skip */ }
+      removeLocalePaks(localesPakDir);
     }
   }
+}
+
+function removeLocalePaks(localesDir) {
+  try {
+    const localeFiles = fs.readdirSync(localesDir);
+    let removed = 0;
+    for (const file of localeFiles) {
+      if (file.endsWith('.pak') && !KEEP_LOCALES.has(file)) {
+        const fullPath = path.join(localesDir, file);
+        const fileSize = fs.statSync(fullPath).size;
+        fs.rmSync(fullPath);
+        removed++;
+        console.log('[cleanup-hook] Removed locale pak: ' + file + ' (' + (fileSize / 1024).toFixed(1) + ' KB)');
+      }
+    }
+    if (removed > 0) {
+      console.log('[cleanup-hook] Total locale paks removed: ' + removed);
+    }
+  } catch { /* skip */ }
 }
 
 function removeUnnecessaryFiles(packageDir) {
@@ -103,13 +130,13 @@ function findResourceDirs(packageDir) {
   return result;
 }
 
-function logSize(packageDir) {
+function logSize(label, dir) {
   let totalSize = 0;
-  function walk(dir) {
+  function walk(d) {
     try {
-      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      const entries = fs.readdirSync(d, { withFileTypes: true });
       for (const entry of entries) {
-        const p = path.join(dir, entry.name);
+        const p = path.join(d, entry.name);
         if (entry.isFile()) {
           totalSize += fs.statSync(p).size;
         } else if (entry.isDirectory()) {
@@ -118,6 +145,6 @@ function logSize(packageDir) {
       }
     } catch { /* skip */ }
   }
-  walk(packageDir);
-  console.log('[cleanup-hook] Package size: ' + (totalSize / 1024 / 1024).toFixed(1) + ' MB');
+  walk(dir);
+  console.log('[cleanup-hook] ' + label + ' size: ' + (totalSize / 1024 / 1024).toFixed(1) + ' MB');
 }
