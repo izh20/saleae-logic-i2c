@@ -58,4 +58,30 @@ jobs:
           path: |
             touchpad-tracker/out/make/**
             touchpad-tracker/out/package/**
-          retention-days: 7
+          retention-days: 90
+
+  # 等待所有平台构建完成后创建 Release
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: List artifacts
+        run: find artifacts/ -type f -ls
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Build ${{ github.sha }}"
+          tag_name: "build-${{ github.run_number }}"
+          files: |
+            artifacts/**/*
+          prerelease: true
+          token: ${{ secrets.GITHUB_TOKEN }}
