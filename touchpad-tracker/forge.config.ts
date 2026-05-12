@@ -16,9 +16,12 @@ const config: ForgeConfig = {
     icon: 'assets/icon',
   },
   rebuildConfig: {},
+  hooks: {
+    packageAfterCopy: require('./scripts/cleanup-hook.js'),
+  },
   makers: [
-    new MakerSquirrel({}),
-    new MakerZIP({}, ['darwin']),
+    new MakerSquirrel({ noMsi: true }),
+    new MakerZIP({}, ['darwin', 'win32']),
     new MakerRpm({}),
     new MakerDeb({}),
   ],
