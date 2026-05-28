@@ -151,7 +151,7 @@ const FrameListView: React.FC<FrameListViewProps> = ({
           flexShrink: 0,
         }}
       >
-        <span style={{ width: 130 }}>#</span>
+        <span style={{ width: 60 }}>#</span>
         <span style={{ width: 120 }}>Scan(100μs)/Δ</span>
         <span style={{ flex: 1 }}>Fingers(id,state,x,y,l,w,p)</span>
         <span style={{ width: 250 }}>Stylus(state,x,y,p,tx,ty)</span>
@@ -188,7 +188,7 @@ const FrameListView: React.FC<FrameListViewProps> = ({
               }}
               onClick={() => !isLiveMode && onSelectFrame?.(index)}
             >
-              <span style={{ width: 40, color: isActive ? '#6a9955' : '#858585' }}>{index}</span>
+              <span style={{ width: 60, color: isActive ? '#6a9955' : '#858585' }}>{index}</span>
               <span style={{ width: 120 }}>{formatTimestamp(frame, prevScantime)}</span>
               <span style={{ flex: 1, color: '#ce9178' }}>{formatFingers(frame)}</span>
               <span style={{ width: 250, color: '#4ecdc4' }}>{formatStylus(frame)}</span>
