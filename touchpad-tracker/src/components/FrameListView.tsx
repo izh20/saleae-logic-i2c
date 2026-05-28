@@ -147,7 +147,7 @@ const FrameListView: React.FC<FrameListViewProps> = ({
         <span style={{ width: 40 }}>#</span>
         <span style={{ width: 100 }}>Scan(100μs)/Δ</span>
         <span style={{ flex: 1 }}>Fingers(id,state,x,y,l,w,p)</span>
-        <span style={{ width: 120 }}>Stylus(state,x,y,press)</span>
+        <span style={{ width: 130 }}>Stylus(s,x,y,p)</span>
         <span style={{ width: 40 }}>Pkt</span>
       </div>
 
