@@ -28,7 +28,7 @@ const App: React.FC = () => {
   const trajectoriesCallbackRef = useRef<(frame: FingerFrame) => void | null>(null);
 
   // Live frames storage for real-time mode (max 10000 frames to prevent memory leak)
-  const MAX_LIVE_FRAMES = 10000;
+  const MAX_LIVE_FRAMES = 20000;
   const liveFramesRef = useRef<FingerFrame[]>([]);
   const isFrameListActiveRef = useRef(false);
   const isFrameListPausedRef = useRef(false);
@@ -567,7 +567,8 @@ const App: React.FC = () => {
             <div style={{ marginBottom: 16 }}>
               <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>笔状态颜色</div>
               <div><span style={{ color: '#ffffff' }}>■ 白色</span> - Tip（接触）</div>
-              <div><span style={{ color: '#ff0000' }}>■ 红色</span> - Hover（悬停）</div>
+              <div><span style={{ color: '#ff6b6b' }}>■ 红色</span> - Hover（悬停）</div>
+              <div><span style={{ color: '#808080' }}>■ 灰色</span> - Release（释放）</div>
             </div>
 
             <div style={{ marginBottom: 16 }}>
@@ -575,6 +576,13 @@ const App: React.FC = () => {
               <div><strong>TP Mode:</strong> 使用字节3的状态值</div>
               <div><strong>MCU Mode:</strong> 根据压力值判断</div>
               <div style={{ fontSize: 12, color: '#808080' }}>pressure &gt;= 100 为 Tip，&lt; 100 为 Hover</div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>Frame List 帧列表</div>
+              <div>实时模式：点击 Start 累计帧数据，Stop 暂停，Clear 清空</div>
+              <div>回放模式：点击某行可跳转至对应帧</div>
+              <div style={{ fontSize: 12, color: '#808080' }}>列：(#)行号、Scan scantime/Δ、(Fingers)手指、(Stylus)笔、(Pkt)包类型</div>
             </div>
 
             <div style={{ color: '#808080', fontSize: 12 }}>
