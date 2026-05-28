@@ -21,13 +21,12 @@ function formatTimestamp(frame: FingerFrame, prevScantime: number): string {
 }
 
 function formatFingers(frame: FingerFrame): string {
-  const count = frame.fingers.length;
+  const count = frame.fingerCount;
   if (count === 0) return '-';
-  const slots = frame.fingers.map(f => {
-    const state = f.state || f.touchState || 0;
-    return `(${f.id},${state},${f.x},${f.y})`;
-  }).join(',');
-  return `${count}${slots}`;
+  const activeSlots = frame.slots.filter(s => s.state > 0);
+  if (activeSlots.length === 0) return count + '';
+  const slots = activeSlots.map(f => `(${f.fingerId},${f.state},${f.x},${f.y})`).join(',');
+  return `${count} ${slots}`;
 }
 
 function formatStylus(frame: FingerFrame): string {
