@@ -35,12 +35,16 @@ function formatFingers(frame: FingerFrame): string {
   return `${count} ${slots}`;
 }
 
-const STYLUS_STATE_NAMES = ['release', 'hover', 'tip'];
+const STYLUS_STATE_NAMES: Record<number, string> = {
+  0x00: 'release',
+  0x20: 'hover',
+  0x21: 'tip',
+};
 
 function formatStylus(frame: FingerFrame): string {
   if (!frame.stylus) return '-';
   const s = frame.stylus;
-  const stateName = STYLUS_STATE_NAMES[s.state] || s.state;
+  const stateName = STYLUS_STATE_NAMES[s.state] ?? `0x${s.state.toString(16)}`;
   return `${stateName} (${s.x},${s.y},${s.tipPressure},${s.xTilt},${s.yTilt})`;
 }
 
