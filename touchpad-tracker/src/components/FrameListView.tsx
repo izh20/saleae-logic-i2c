@@ -29,7 +29,8 @@ function formatFingers(frame: FingerFrame): string {
   if (activeSlots.length === 0) return count + '';
   const slots = activeSlots.map(f => {
     const stateName = TOUCH_STATE_NAMES[f.state] || f.state;
-    return `(${f.fingerId},${stateName},${f.x},${f.y})`;
+    const extras = [f.length, f.width, f.pressure].filter(v => v !== undefined).map(v => v).join(',');
+    return `(${f.fingerId},${stateName},${f.x},${f.y}${extras ? ',' + extras : ''})`;
   }).join(',');
   return `${count} ${slots}`;
 }
@@ -145,7 +146,7 @@ const FrameListView: React.FC<FrameListViewProps> = ({
       >
         <span style={{ width: 40 }}>#</span>
         <span style={{ width: 100 }}>Scan(100μs)/Δ</span>
-        <span style={{ flex: 1 }}>Fingers(id,state,x,y)</span>
+        <span style={{ flex: 1 }}>Fingers(id,state,x,y,l,w,p)</span>
         <span style={{ width: 120 }}>Stylus(state,x,y,press)</span>
         <span style={{ width: 40 }}>Pkt</span>
       </div>
