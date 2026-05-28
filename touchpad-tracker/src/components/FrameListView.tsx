@@ -147,8 +147,8 @@ const FrameListView: React.FC<FrameListViewProps> = ({
         <span style={{ width: 40 }}>#</span>
         <span style={{ width: 100 }}>Scan(100μs)/Δ</span>
         <span style={{ flex: 1 }}>Fingers(id,state,x,y,l,w,p)</span>
-        <span style={{ width: 130 }}>Stylus(s,x,y,p)</span>
-        <span style={{ width: 40 }}>Pkt</span>
+        <span style={{ width: 150 }}>Stylus(s,x,y,p)</span>
+        <span style={{ width: 30 }}>Pkt</span>
       </div>
 
       {/* Scrollable frame list */}
@@ -184,8 +184,8 @@ const FrameListView: React.FC<FrameListViewProps> = ({
               <span style={{ width: 40, color: isActive ? '#6a9955' : '#858585' }}>{index}</span>
               <span style={{ width: 100 }}>{formatTimestamp(frame, prevScantime)}</span>
               <span style={{ flex: 1, color: '#ce9178' }}>{formatFingers(frame)}</span>
-              <span style={{ width: 130, color: '#4ecdc4' }}>{formatStylus(frame)}</span>
-              <span style={{ width: 40, color: '#808080' }}>{frame.packetType}</span>
+              <span style={{ width: 150, color: '#4ecdc4' }}>{formatStylus(frame)}</span>
+              <span style={{ width: 30, color: '#808080' }}>{frame.packetType}</span>
             </div>
           );
         })}
