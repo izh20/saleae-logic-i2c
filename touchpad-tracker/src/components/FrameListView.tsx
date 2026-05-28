@@ -14,10 +14,10 @@ interface FrameListViewProps {
 }
 
 function formatTimestamp(frame: FingerFrame, prevScantime: number): string {
-  // scantime unit is 100us, calculate interval from previous frame
+  // scantime unit is 100us, support u32
   const delta = prevScantime >= 0 ? (frame.scantime - prevScantime) / 10.0 : 0;
   const deltaStr = delta > 0 ? `+${delta.toFixed(1)}ms` : '-';
-  return `${frame.scantime} (${deltaStr})`;
+  return `${frame.scantime.toString().padStart(10)} (${deltaStr})`;
 }
 
 const TOUCH_STATE_NAMES = ['tip release', 'release', 'tip', 'finger'];
@@ -151,8 +151,8 @@ const FrameListView: React.FC<FrameListViewProps> = ({
           flexShrink: 0,
         }}
       >
-        <span style={{ width: 40 }}>#</span>
-        <span style={{ width: 100 }}>Scan(100μs)/Δ</span>
+        <span style={{ width: 130 }}>#</span>
+        <span style={{ width: 120 }}>Scan(100μs)/Δ</span>
         <span style={{ flex: 1 }}>Fingers(id,state,x,y,l,w,p)</span>
         <span style={{ width: 250 }}>Stylus(state,x,y,p,tx,ty)</span>
         <span style={{ width: 30 }}>Pkt</span>
@@ -189,7 +189,7 @@ const FrameListView: React.FC<FrameListViewProps> = ({
               onClick={() => !isLiveMode && onSelectFrame?.(index)}
             >
               <span style={{ width: 40, color: isActive ? '#6a9955' : '#858585' }}>{index}</span>
-              <span style={{ width: 100 }}>{formatTimestamp(frame, prevScantime)}</span>
+              <span style={{ width: 120 }}>{formatTimestamp(frame, prevScantime)}</span>
               <span style={{ flex: 1, color: '#ce9178' }}>{formatFingers(frame)}</span>
               <span style={{ width: 250, color: '#4ecdc4' }}>{formatStylus(frame)}</span>
               <span style={{ width: 30, color: '#808080' }}>{frame.packetType}</span>
