@@ -20,12 +20,12 @@ function formatTimestamp(frame: FingerFrame, prevScantime: number): string {
   return `${frame.scantime} (${deltaStr})`;
 }
 
-const TOUCH_STATE_NAMES = ['largeRel', 'fingerRel', 'largeTouch', 'fingerTouch'];
+const TOUCH_STATE_NAMES = ['tip release', 'release', 'tip', 'finger'];
 
 function formatFingers(frame: FingerFrame): string {
   const count = frame.fingerCount;
   if (count === 0) return '-';
-  const activeSlots = frame.slots.filter(s => s.state > 0);
+  const activeSlots = frame.slots.filter(s => s.state >= 0);
   if (activeSlots.length === 0) return count + '';
   const slots = activeSlots.map(f => {
     const stateName = TOUCH_STATE_NAMES[f.state] || f.state;
