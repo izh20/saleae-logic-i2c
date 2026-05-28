@@ -20,6 +20,22 @@ function formatTimestamp(frame: FingerFrame, prevScantime: number): string {
   return `${frame.scantime} (${deltaStr})`;
 }
 
+function formatFingers(frame: FingerFrame): string {
+  const count = frame.fingers.length;
+  if (count === 0) return '-';
+  const slots = frame.fingers.map(f => {
+    const state = f.state || f.touchState || 0;
+    return `(${f.id},${state},${f.x},${f.y})`;
+  }).join(',');
+  return `${count}${slots}`;
+}
+
+function formatStylus(frame: FingerFrame): string {
+  if (!frame.stylus) return '-';
+  const s = frame.stylus;
+  return `${s.state || 0} (${s.x}, ${s.y}, ${s.pressure || 0})`;
+}
+
 const ROW_HEIGHT = 28;
 
 const FrameListView: React.FC<FrameListViewProps> = ({
