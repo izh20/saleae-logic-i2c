@@ -25,6 +25,7 @@ export interface UsePlayerReturn {
   setDirectFrameCallback: (callback: (frame: FingerFrame) => void) => void;
   setUndoFrameCallback: (callback: () => void) => void;
   setFrameIndexCallback: (callback: (index: number) => void) => void;
+  getFrames: () => FingerFrame[];
 }
 
 export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerReturn {
@@ -81,6 +82,8 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
   const setFrameIndexCallback = useCallback((callback: (index: number) => void) => {
     frameIndexCallbackRef.current = callback;
   }, []);
+
+  const getFrames = useCallback(() => framesRef.current, []);
 
   const loadRecording = useCallback((content: string): boolean => {
     // Debug: check content format
@@ -259,5 +262,6 @@ export function usePlayer(onFrame: (frame: FingerFrame) => void): UsePlayerRetur
     setDirectFrameCallback,
     setUndoFrameCallback,
     setFrameIndexCallback,
+    getFrames,
   };
 }

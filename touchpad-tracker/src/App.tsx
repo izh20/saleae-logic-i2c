@@ -2,23 +2,38 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import TrajectoryView from './components/TrajectoryView';
 import PlaybackView from './components/PlaybackView';
 import PlaybackControls from './components/PlaybackControls';
+import FrameListView from './components/FrameListView';
 import { TouchpadConfig, DEFAULT_CONFIG, FingerFrame } from './types/finger';
 import { useRecorder } from './hooks/useRecorder';
 import { usePlayer, PlaybackSpeed } from './hooks/usePlayer';
 import { parseSaleaeCSV } from './utils/parseSaleaeTXT';
 
 const App: React.FC = () => {
+  type ViewMode = 'live' | 'playback' | 'frameList';
+
   const [config, setConfig] = useState<TouchpadConfig>(DEFAULT_CONFIG);
   const [connected, setConnected] = useState(false);
-  const [playbackMode, setPlaybackMode] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('live');
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [totalFrames, setTotalFrames] = useState(0);
   const [playbackFrame, setPlaybackFrame] = useState<FingerFrame | null>(null);
   const [i2cAddress, setI2cAddress] = useState<string>('0x2C');
   const [showHelp, setShowHelp] = useState(false);
+  // Force re-render for live frame list
+  const [liveFrameCount, setLiveFrameCount] = useState(0);
+  // Frame list accumulation state
+  const [isFrameListActive, setIsFrameListActive] = useState(false);
 
   // Ref to hold the callback for sending frames to TrajectoryView
   const trajectoriesCallbackRef = useRef<(frame: FingerFrame) => void | null>(null);
+
+  // Live frames storage for real-time mode (max 10000 frames to prevent memory leak)
+  const MAX_LIVE_FRAMES = 10000;
+  const liveFramesRef = useRef<FingerFrame[]>([]);
+  const isFrameListActiveRef = useRef(false);
+  const isFrameListPausedRef = useRef(false);
+  // Track previous view mode to return to when exiting frameList
+  const prevViewModeRef = useRef<ViewMode>('live');
 
   // Recorder hook
   const { isRecording, startRecording, stopRecording, addFrame } = useRecorder();
@@ -36,20 +51,30 @@ const App: React.FC = () => {
   }, []);
 
   // Keep refs in sync with latest values for stable subscription
-  const playbackModeRef = useRef(playbackMode);
+  const viewModeRef = useRef(viewMode);
   const isRecordingRef = useRef(isRecording);
   const addFrameRef = useRef(addFrame);
-  useEffect(() => { playbackModeRef.current = playbackMode; }, [playbackMode]);
-  useEffect(() => { isRecordingRef.current = isRecording; }, [isRecording]);
+  useEffect(() => { viewModeRef.current = viewMode; }, [viewMode]);
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
   useEffect(() => { addFrameRef.current = addFrame; }, [addFrame]);
+  useEffect(() => {
+    // Track previous mode for back button
+    if (viewMode !== 'frameList') {
+      prevViewModeRef.current = viewMode;
+    }
+    // Sync frame list active state
+    isFrameListActiveRef.current = viewMode === 'frameList';
+  }, [viewMode]);
 
   // Handle REC button click
   const handleRecClick = () => {
     if (isRecording) {
       handleStopRecording();
     } else {
-      if (playbackMode) {
-        setPlaybackMode(false);
+      if (viewMode !== 'live') {
+        setViewMode('live');
         player.pause();
       }
       startRecording(config);
@@ -58,7 +83,7 @@ const App: React.FC = () => {
 
   // Handle PLAY button click
   const handlePlayClick = () => {
-    if (playbackMode) {
+    if (viewMode === 'playback') {
       if (player.isPlaying) {
         player.pause();
       } else {
@@ -79,8 +104,20 @@ const App: React.FC = () => {
       setConnected(true);
 
       // In live mode, send frame to TrajectoryView
-      if (!playbackModeRef.current && trajectoriesCallbackRef.current) {
+      if (viewModeRef.current === 'live' && trajectoriesCallbackRef.current) {
         trajectoriesCallbackRef.current(frame);
+      }
+      // Accumulate for frame list when in frameList mode and not paused
+      if (isFrameListActiveRef.current && !isFrameListPausedRef.current) {
+        liveFramesRef.current.push(frame);
+        if (liveFramesRef.current.length > MAX_LIVE_FRAMES) {
+          liveFramesRef.current.shift();
+        }
+        const count = liveFramesRef.current.length;
+        console.log('[FrameList] push frame, count now:', count, 'active:', isFrameListActiveRef.current, 'paused:', isFrameListPausedRef.current);
+        setLiveFrameCount(c => c + 1);
+      } else {
+        console.log('[FrameList] skipped, active:', isFrameListActiveRef.current, 'paused:', isFrameListPausedRef.current);
       }
 
       // In recording mode, add frame to recording
@@ -123,19 +160,19 @@ const App: React.FC = () => {
           setShowHelp(prev => !prev);
           break;
         case ' ':
-          if (playbackMode) {
+          if (viewMode === 'playback') {
             e.preventDefault();
             handlePlayClick();
           }
           break;
         case 'ArrowLeft':
-          if (playbackMode) {
+          if (viewMode === 'playback') {
             e.preventDefault();
             player.stepBackward();
           }
           break;
         case 'ArrowRight':
-          if (playbackMode) {
+          if (viewMode === 'playback') {
             e.preventDefault();
             player.stepForward();
           }
@@ -145,7 +182,7 @@ const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [playbackMode, handleRecClick, handlePlayClick, player]);
+  }, [viewMode, handleRecClick, handlePlayClick, player]);
 
   // Handle open file (load recording)
   const handleOpenFile = async () => {
@@ -153,7 +190,7 @@ const App: React.FC = () => {
     if (result) {
       const loaded = player.loadRecording(result.content);
       if (loaded) {
-        setPlaybackMode(true);
+        setViewMode('playback');
         setTotalFrames(player.totalFrames);
         setCurrentFrameIndex(0);
         // Set first frame for playback
@@ -272,15 +309,15 @@ const App: React.FC = () => {
         {/* PLAY button */}
         <button
           onClick={handlePlayClick}
-          disabled={!playbackMode}
+          disabled={viewMode !== 'playback'}
           style={{
             width: 36,
             height: 36,
             borderRadius: 4,
             border: 'none',
-            background: playbackMode ? '#3c3c3c' : '#2d2d2d',
-            color: playbackMode ? '#d4d4d4' : '#5a5a5a',
-            cursor: playbackMode ? 'pointer' : 'not-allowed',
+            background: viewMode === 'playback' ? '#3c3c3c' : '#2d2d2d',
+            color: viewMode === 'playback' ? '#d4d4d4' : '#5a5a5a',
+            cursor: viewMode === 'playback' ? 'pointer' : 'not-allowed',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -292,10 +329,10 @@ const App: React.FC = () => {
         </button>
 
         {/* Exit Playback button - shown only in playback mode */}
-        {playbackMode && (
+        {viewMode === 'playback' && (
           <button
             onClick={() => {
-              setPlaybackMode(false);
+              setViewMode('live');
               setPlaybackFrame(null);
               player.pause();
             }}
@@ -319,10 +356,46 @@ const App: React.FC = () => {
             Recording...
           </span>
         )}
-        {playbackMode && (
+        {viewMode === 'playback' && (
           <span style={{ fontSize: 12, color: '#6a9955' }}>
             Playback Mode
           </span>
+        )}
+
+        {/* Frame List button - available in both live and playback modes */}
+        {viewMode !== 'frameList' && (
+          <button
+            onClick={() => setViewMode('frameList')}
+            style={{
+              padding: '4px 12px',
+              borderRadius: 4,
+              border: 'none',
+              background: '#3c3c3c',
+              color: '#d4d4d4',
+              cursor: 'pointer',
+              fontSize: 12,
+            }}
+          >
+            Frame List
+          </button>
+        )}
+
+        {/* Back button - returns to previous mode (live or playback) */}
+        {viewMode === 'frameList' && (
+          <button
+            onClick={() => setViewMode(prevViewModeRef.current)}
+            style={{
+              padding: '4px 12px',
+              borderRadius: 4,
+              border: 'none',
+              background: '#3c3c3c',
+              color: '#d4d4d4',
+              cursor: 'pointer',
+              fontSize: 12,
+            }}
+          >
+            ← Back
+          </button>
         )}
 
         {/* Resolution config */}
@@ -380,15 +453,33 @@ const App: React.FC = () => {
 
       {/* Main content */}
       <main style={{ flex: 1, overflow: 'hidden' }}>
-        {playbackMode ? (
+        {viewMode === 'playback' && (
           <PlaybackView config={config} currentFrame={playbackFrame} onClearRef={player.setClearCallback} onStepModeRef={player.setStepModeCallback} onDirectFrameRef={player.setDirectFrameCallback} onUndoFrameRef={player.setUndoFrameCallback} onFrameIndexRef={player.setFrameIndexCallback} />
-        ) : (
+        )}
+        {viewMode === 'frameList' && (
+          <FrameListView
+            frames={isFrameListActiveRef.current ? liveFramesRef.current : player.getFrames()}
+            currentFrameIndex={isFrameListActiveRef.current ? liveFramesRef.current.length - 1 : player.currentFrameIndex}
+            isLiveMode={isFrameListActiveRef.current}
+            liveFramesRef={isFrameListActiveRef.current ? liveFramesRef : null}
+            liveFrameCount={liveFrameCount}
+            onStart={() => { isFrameListPausedRef.current = false; }}
+            onStop={() => { isFrameListPausedRef.current = true; }}
+            onClear={() => { liveFramesRef.current = []; setLiveFrameCount(0); }}
+            onSelectFrame={prevViewModeRef.current === 'playback' ? (index) => {
+              const isBackward = index < player.currentFrameIndex;
+              setViewMode('playback');
+              player.seek(index, isBackward);
+            } : undefined}
+          />
+        )}
+        {viewMode === 'live' && (
           <TrajectoryView config={config} onFrameRef={handleTrajectoryViewRef} />
         )}
       </main>
 
-      {/* Playback controls - shown when in playback mode */}
-      {playbackMode && (
+      {/* Playback controls - shown when not in live mode */}
+      {viewMode !== 'live' && (
         <PlaybackControls
           isPlaying={player.isPlaying}
           currentFrame={player.currentFrameIndex}
