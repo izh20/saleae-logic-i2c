@@ -20,7 +20,7 @@ function formatTimestamp(frame: FingerFrame, prevScantime: number): string {
   return `${frame.scantime} (${deltaStr})`;
 }
 
-const TOUCH_STATE_NAMES = ['tip', 'release', 'release', 'finger'];
+const TOUCH_STATE_NAMES = ['largeRel', 'fingerRel', 'largeTouch', 'fingerTouch'];
 
 function formatFingers(frame: FingerFrame): string {
   const count = frame.fingerCount;
