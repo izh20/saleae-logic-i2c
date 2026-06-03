@@ -125,8 +125,8 @@ function parseStylusFrameFromData(data: string[], timestamp: number): FingerFram
     x: parseHexOrDec(data[5]) | (parseHexOrDec(data[6]) << 8),
     y: parseHexOrDec(data[7]) | (parseHexOrDec(data[8]) << 8),
     tipPressure: parseHexOrDec(data[9]) | (parseHexOrDec(data[10]) << 8),
-    xTilt: parseHexOrDec(data[11]) | (parseHexOrDec(data[12]) << 8),
-    yTilt: parseHexOrDec(data[13]) | (parseHexOrDec(data[14]) << 8),
+    xTilt: (parseHexOrDec(data[11]) | (parseHexOrDec(data[12]) << 8)) << 16 >> 16,
+    yTilt: (parseHexOrDec(data[13]) | (parseHexOrDec(data[14]) << 8)) << 16 >> 16,
   };
 
   return {
