@@ -110,6 +110,20 @@ function parseFingerFrame(data: string[], timestamp: number): FingerFrame | null
   };
 }
 
+// Parse bytes[15..46] as 16 s16 little-endian debug values.
+// Returns 16 zeros if data is shorter than 47 bytes.
+function parseDebugChannels(data: string[]): number[] {
+  const channels: number[] = new Array(16).fill(0);
+  for (let i = 0; i < 16; i++) {
+    const offset = 15 + i * 2;
+    if (offset + 1 >= data.length) break;
+    const low = parseHexOrDec(data[offset]);
+    const high = parseHexOrDec(data[offset + 1]);
+    channels[i] = ((low | (high << 8)) << 16) >> 16;
+  }
+  return channels;
+}
+
 // Parse I2C data array to stylus frame
 function parseStylusFrame(data: string[], timestamp: number): FingerFrame | null {
   if (data.length < 15) return null;
@@ -122,7 +136,7 @@ function parseStylusFrame(data: string[], timestamp: number): FingerFrame | null
   const isStylus = byte0 === 0x2F && byte1 === 0x00 && byte2 === 0x08;
   if (!isStylus) return null;
 
-  // Stylus packet only has 15 bytes valid (0-14)
+  // Stylus packet: bytes 0-14 are stylus data, bytes 15-46 are debug channels
   const stylus: StylusSlot = {
     stylusId: parseHexOrDec(data[4]),
     state: parseHexOrDec(data[3]) as StylusState,
@@ -141,6 +155,7 @@ function parseStylusFrame(data: string[], timestamp: number): FingerFrame | null
     scantime: 0,
     keyState: 0,
     stylus,
+    debugChannels: parseDebugChannels(data),
   };
 }
 

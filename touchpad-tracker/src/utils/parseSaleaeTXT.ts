@@ -107,7 +107,21 @@ function parseFingerFrameFromData(data: string[], timestamp: number): FingerFram
   };
 }
 
-// Parse stylus frame from data (15 bytes valid, header 0x2F 0x00 0x08)
+// Parse bytes[15..46] as 16 s16 little-endian debug values.
+// Returns 16 zeros if data is shorter than 47 bytes.
+function parseDebugChannels(data: string[]): number[] {
+  const channels: number[] = new Array(16).fill(0);
+  for (let i = 0; i < 16; i++) {
+    const offset = 15 + i * 2;
+    if (offset + 1 >= data.length) break;
+    const low = parseHexOrDec(data[offset]);
+    const high = parseHexOrDec(data[offset + 1]);
+    channels[i] = ((low | (high << 8)) << 16) >> 16;
+  }
+  return channels;
+}
+
+// Parse stylus frame from data (15 bytes stylus + 32 bytes debug = 47 bytes total)
 function parseStylusFrameFromData(data: string[], timestamp: number): FingerFrame | null {
   if (data.length < 15) return null;
 
@@ -137,6 +151,7 @@ function parseStylusFrameFromData(data: string[], timestamp: number): FingerFram
     scantime: 0,
     keyState: 0,
     stylus,
+    debugChannels: parseDebugChannels(data),
   };
 }
 
@@ -220,8 +235,8 @@ function parseSaleaeCSVInternal(content: string, supportedAddrs: number[]): Fing
     }
 
     if (isStylus) {
-      // Stylus packet only has 15 bytes valid
-      const frameLen = 15;
+      // Stylus packet: 15 bytes stylus data + 32 bytes debug channels = 47 bytes total
+      const frameLen = 47;
       const endIdx = i + frameLen;
 
       if (endIdx <= allData.length) {

@@ -31,7 +31,8 @@ export interface FingerFrame {
   fingerCount: number;
   scantime: number;
   keyState?: number;
-  stylus?: StylusSlot;    // 笔数据
+  stylus?: StylusSlot;       // 笔数据 (0-14 字节)
+  debugChannels?: number[];  // 调试数据 (15-46 字节，16 个 s16 小端值)
 }
 
 // Point for trajectory rendering with touch state

@@ -3,13 +3,14 @@ import TrajectoryView from './components/TrajectoryView';
 import PlaybackView from './components/PlaybackView';
 import PlaybackControls from './components/PlaybackControls';
 import FrameListView from './components/FrameListView';
+import DebugView from './components/DebugView';
 import { TouchpadConfig, DEFAULT_CONFIG, FingerFrame } from './types/finger';
 import { useRecorder } from './hooks/useRecorder';
 import { usePlayer, PlaybackSpeed } from './hooks/usePlayer';
 import { parseSaleaeCSV } from './utils/parseSaleaeTXT';
 
 const App: React.FC = () => {
-  type ViewMode = 'live' | 'playback' | 'frameList';
+  type ViewMode = 'live' | 'playback' | 'frameList' | 'debug';
 
   const [config, setConfig] = useState<TouchpadConfig>(DEFAULT_CONFIG);
   const [connected, setConnected] = useState(false);
@@ -32,6 +33,8 @@ const App: React.FC = () => {
   const liveFramesRef = useRef<FingerFrame[]>([]);
   const isFrameListActiveRef = useRef(false);
   const isFrameListPausedRef = useRef(false);
+  const isDebugActiveRef = useRef(false);
+  const isDebugPausedRef = useRef(false);
   // Track previous view mode to return to when exiting frameList
   const prevViewModeRef = useRef<ViewMode>('live');
 
@@ -60,12 +63,14 @@ const App: React.FC = () => {
   }, [isRecording]);
   useEffect(() => { addFrameRef.current = addFrame; }, [addFrame]);
   useEffect(() => {
-    // Track previous mode for back button
-    if (viewMode !== 'frameList') {
+    // Track previous mode for back button (frameList and debug both have back behavior)
+    if (viewMode !== 'frameList' && viewMode !== 'debug') {
       prevViewModeRef.current = viewMode;
     }
     // Sync frame list active state
     isFrameListActiveRef.current = viewMode === 'frameList';
+    // Sync debug active state
+    isDebugActiveRef.current = viewMode === 'debug';
   }, [viewMode]);
 
   // Handle REC button click
@@ -107,17 +112,24 @@ const App: React.FC = () => {
       if (viewModeRef.current === 'live' && trajectoriesCallbackRef.current) {
         trajectoriesCallbackRef.current(frame);
       }
-      // Accumulate for frame list when in frameList mode and not paused
-      if (isFrameListActiveRef.current && !isFrameListPausedRef.current) {
+      // Accumulate for frame list / debug view when active and not paused
+      const isAccumulating =
+        (isFrameListActiveRef.current && !isFrameListPausedRef.current) ||
+        (isDebugActiveRef.current && !isDebugPausedRef.current);
+      if (isAccumulating) {
         liveFramesRef.current.push(frame);
         if (liveFramesRef.current.length > MAX_LIVE_FRAMES) {
           liveFramesRef.current.shift();
         }
         const count = liveFramesRef.current.length;
-        console.log('[FrameList] push frame, count now:', count, 'active:', isFrameListActiveRef.current, 'paused:', isFrameListPausedRef.current);
+        console.log('[Accumulate] push frame, count now:', count,
+          'frameList:', isFrameListActiveRef.current, '/', isFrameListPausedRef.current,
+          'debug:', isDebugActiveRef.current, '/', isDebugPausedRef.current);
         setLiveFrameCount(c => c + 1);
       } else {
-        console.log('[FrameList] skipped, active:', isFrameListActiveRef.current, 'paused:', isFrameListPausedRef.current);
+        console.log('[Accumulate] skipped',
+          'frameList:', isFrameListActiveRef.current, '/', isFrameListPausedRef.current,
+          'debug:', isDebugActiveRef.current, '/', isDebugPausedRef.current);
       }
 
       // In recording mode, add frame to recording
@@ -380,8 +392,26 @@ const App: React.FC = () => {
           </button>
         )}
 
-        {/* Back button - returns to previous mode (live or playback) */}
-        {viewMode === 'frameList' && (
+        {/* Debug button - available in both live and playback modes (not in frameList) */}
+        {viewMode !== 'debug' && viewMode !== 'frameList' && (
+          <button
+            onClick={() => setViewMode('debug')}
+            style={{
+              padding: '4px 12px',
+              borderRadius: 4,
+              border: 'none',
+              background: '#3c3c3c',
+              color: '#d4d4d4',
+              cursor: 'pointer',
+              fontSize: 12,
+            }}
+          >
+            Debug
+          </button>
+        )}
+
+        {/* Back button - returns to previous mode (live or playback) for frameList and debug */}
+        {(viewMode === 'frameList' || viewMode === 'debug') && (
           <button
             onClick={() => setViewMode(prevViewModeRef.current)}
             style={{
@@ -465,6 +495,24 @@ const App: React.FC = () => {
             liveFrameCount={liveFrameCount}
             onStart={() => { isFrameListPausedRef.current = false; }}
             onStop={() => { isFrameListPausedRef.current = true; }}
+            onClear={() => { liveFramesRef.current = []; setLiveFrameCount(0); }}
+            onSelectFrame={prevViewModeRef.current === 'playback' ? (index) => {
+              const isBackward = index < player.currentFrameIndex;
+              setViewMode('playback');
+              player.seek(index, isBackward);
+            } : undefined}
+          />
+        )}
+        {viewMode === 'debug' && (
+          <DebugView
+            frames={isDebugActiveRef.current ? liveFramesRef.current : player.getFrames()}
+            currentFrameIndex={isDebugActiveRef.current ? liveFramesRef.current.length - 1 : player.currentFrameIndex}
+            isLiveMode={isDebugActiveRef.current}
+            liveFramesRef={isDebugActiveRef.current ? liveFramesRef : null}
+            liveFrameCount={liveFrameCount}
+            isPaused={isDebugPausedRef.current}
+            onPause={() => { isDebugPausedRef.current = true; }}
+            onResume={() => { isDebugPausedRef.current = false; }}
             onClear={() => { liveFramesRef.current = []; setLiveFrameCount(0); }}
             onSelectFrame={prevViewModeRef.current === 'playback' ? (index) => {
               const isBackward = index < player.currentFrameIndex;
@@ -583,6 +631,15 @@ const App: React.FC = () => {
               <div>实时模式：点击 Start 累计帧数据，Stop 暂停，Clear 清空</div>
               <div>回放模式：点击某行可跳转至对应帧</div>
               <div style={{ fontSize: 12, color: '#808080' }}>列：(#)行号、Scan scantime/Δ、(Fingers)手指、(Stylus)笔、(Pkt)包类型</div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>Debug 调试视图</div>
+              <div>解析笔包 bytes[15..46] 为 16 个 s16 小端通道 (D0..D15)</div>
+              <div>格式切换：Dec (s16) / Dec (u16) / Hex / Binary</div>
+              <div>实时模式：保留最近 200 帧，支持 Pause/Resume/Clear</div>
+              <div>回放模式：点击某行可跳转至对应帧</div>
+              <div style={{ fontSize: 12, color: '#808080' }}>录制与保存：使用顶部 REC 按钮录制，JSON 文件会包含 <code style={{ background: '#3c3c3c', padding: '0 4px', borderRadius: 2 }}>debugChannels</code> 字段。旧录制文件（无此字段）兼容，Debug 列显示 —</div>
             </div>
 
             <div style={{ color: '#808080', fontSize: 12 }}>
