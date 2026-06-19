@@ -33,6 +33,7 @@ export interface FingerFrame {
   keyState?: number;
   stylus?: StylusSlot;       // 笔数据 (0-14 字节)
   debugChannels?: number[];  // 调试数据 (15-46 字节，16 个 s16 小端值)
+  rawBytes?: number[];       // 原始 UDP 字节数据（用于 HID 分析）
 }
 
 // Point for trajectory rendering with touch state

@@ -186,6 +186,8 @@ function startUdpServer() {
 
         if (frame) {
           if (DEBUG) console.log('Parsed frame:', frame);
+          // Populate raw bytes for HID analysis (parse hex strings to numbers)
+          frame.rawBytes = dataArray.map(d => parseHexOrDec(d));
           if (mainWindow) {
             mainWindow.webContents.send('finger-frame', frame);
           }
