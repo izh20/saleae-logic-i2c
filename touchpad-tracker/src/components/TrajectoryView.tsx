@@ -351,7 +351,7 @@ const TrajectoryView: React.FC<TrajectoryViewProps> = ({ config, onFrameRef }) =
         <div>Key: {stats.keyState}</div>
         {stats.activeFingers.map((slot) => (
           <div key={slot.fingerId} style={{ color: FINGER_COLORS[slot.fingerId % FINGER_COLORS.length] }}>
-            F{slot.fingerId}: X={slot.x} Y={slot.y}
+            F{slot.fingerId}: X={slot.x} Y={slot.y}{slot.length !== undefined ? ` L=${slot.length}` : ""}{slot.width !== undefined ? ` W=${slot.width}` : ""}{slot.pressure !== undefined ? ` P=${slot.pressure}` : ""}
           </div>
         ))}
         {stats.stylus && (
