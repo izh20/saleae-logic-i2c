@@ -4,13 +4,14 @@ import PlaybackView from './components/PlaybackView';
 import PlaybackControls from './components/PlaybackControls';
 import FrameListView from './components/FrameListView';
 import DebugView from './components/DebugView';
+import HidAnalysisView from './components/HidAnalysisView';
 import { TouchpadConfig, DEFAULT_CONFIG, FingerFrame } from './types/finger';
 import { useRecorder } from './hooks/useRecorder';
 import { usePlayer, PlaybackSpeed } from './hooks/usePlayer';
 import { parseSaleaeCSV } from './utils/parseSaleaeTXT';
 
 const App: React.FC = () => {
-  type ViewMode = 'live' | 'playback' | 'frameList' | 'debug';
+  type ViewMode = 'live' | 'playback' | 'frameList' | 'debug' | 'hidAnalysis';
 
   const [config, setConfig] = useState<TouchpadConfig>(DEFAULT_CONFIG);
   const [connected, setConnected] = useState(false);
@@ -35,6 +36,7 @@ const App: React.FC = () => {
   const isFrameListPausedRef = useRef(false);
   const isDebugActiveRef = useRef(false);
   const isDebugPausedRef = useRef(false);
+  const isHidAnalysisActiveRef = useRef(false);
   // Track previous view mode to return to when exiting frameList
   const prevViewModeRef = useRef<ViewMode>('live');
 
@@ -63,14 +65,14 @@ const App: React.FC = () => {
   }, [isRecording]);
   useEffect(() => { addFrameRef.current = addFrame; }, [addFrame]);
   useEffect(() => {
-    // Track previous mode for back button (frameList and debug both have back behavior)
-    if (viewMode !== 'frameList' && viewMode !== 'debug') {
+    // Track previous mode for back button (frameList, debug, hidAnalysis have back behavior)
+    if (viewMode !== 'frameList' && viewMode !== 'debug' && viewMode !== 'hidAnalysis') {
       prevViewModeRef.current = viewMode;
     }
-    // Sync frame list active state
+    // Sync active refs
     isFrameListActiveRef.current = viewMode === 'frameList';
-    // Sync debug active state
     isDebugActiveRef.current = viewMode === 'debug';
+    isHidAnalysisActiveRef.current = viewMode === 'hidAnalysis';
   }, [viewMode]);
 
   // Handle REC button click
@@ -410,8 +412,26 @@ const App: React.FC = () => {
           </button>
         )}
 
-        {/* Back button - returns to previous mode (live or playback) for frameList and debug */}
-        {(viewMode === 'frameList' || viewMode === 'debug') && (
+        {/* HID Analysis button */}
+        {viewMode !== 'hidAnalysis' && viewMode !== 'frameList' && viewMode !== 'debug' && (
+          <button
+            onClick={() => setViewMode('hidAnalysis')}
+            style={{
+              padding: '4px 12px',
+              borderRadius: 4,
+              border: 'none',
+              background: '#3c3c3c',
+              color: '#d4d4d4',
+              cursor: 'pointer',
+              fontSize: 12,
+            }}
+          >
+            HID Analysis
+          </button>
+        )}
+
+        {/* Back button - returns to previous mode for frameList, debug, and hidAnalysis */}
+        {(viewMode === 'frameList' || viewMode === 'debug' || viewMode === 'hidAnalysis') && (
           <button
             onClick={() => setViewMode(prevViewModeRef.current)}
             style={{
@@ -519,6 +539,11 @@ const App: React.FC = () => {
               setViewMode('playback');
               player.seek(index, isBackward);
             } : undefined}
+          />
+        )}
+        {viewMode === 'hidAnalysis' && (
+          <HidAnalysisView
+            i2cAddress={i2cAddress.startsWith('0x') ? parseInt(i2cAddress, 16) : parseInt(i2cAddress, 10)}
           />
         )}
         {viewMode === 'live' && (

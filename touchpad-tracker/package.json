@@ -43,9 +43,13 @@
     "vite": "^5.4.21"
   },
   "dependencies": {
+    "@types/react-window": "^1.8.8",
     "electron-squirrel-startup": "^1.0.1",
     "electron-store": "^8.2.0",
+    "marked": "^18.0.5",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "react-window": "^2.2.7",
+    "toml": "^4.1.1"
   }
 }
