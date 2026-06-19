@@ -552,7 +552,7 @@ const App: React.FC = () => {
       </main>
 
       {/* Playback controls - shown when not in live mode */}
-      {viewMode !== 'live' && (
+      {viewMode !== 'live' && viewMode !== 'hidAnalysis' && (
         <PlaybackControls
           isPlaying={player.isPlaying}
           currentFrame={player.currentFrameIndex}
