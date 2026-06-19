@@ -288,165 +288,68 @@ const App: React.FC = () => {
           {connected ? 'UDP Connected' : 'Waiting for data...'}
         </span>
 
-        {/* Recording indicator dot */}
-        {isRecording && (
-          <div style={{
-            width: 8,
-            height: 8,
-            borderRadius: '50%',
-            background: '#f14c4c',
-            marginRight: 4,
-          }} />
-        )}
-
-        {/* REC button */}
-        <button
-          onClick={handleRecClick}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 4,
-            border: 'none',
-            background: isRecording ? '#f14c4c' : '#3c3c3c',
-            color: isRecording ? '#fff' : '#d4d4d4',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 12,
-            fontWeight: 600,
-          }}
-        >
-          REC
-        </button>
-
-        {/* PLAY button */}
-        <button
-          onClick={handlePlayClick}
-          disabled={viewMode !== 'playback'}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 4,
-            border: 'none',
-            background: viewMode === 'playback' ? '#3c3c3c' : '#2d2d2d',
-            color: viewMode === 'playback' ? '#d4d4d4' : '#5a5a5a',
-            cursor: viewMode === 'playback' ? 'pointer' : 'not-allowed',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 12,
-            fontWeight: 600,
-          }}
-        >
-          PLAY
-        </button>
-
-        {/* Exit Playback button - shown only in playback mode */}
-        {viewMode === 'playback' && (
+        {/* REC button + status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          {isRecording && (
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f14c4c' }} />
+          )}
           <button
-            onClick={() => {
-              setViewMode('live');
-              setPlaybackFrame(null);
-              player.pause();
-            }}
+            onClick={handleRecClick}
             style={{
-              padding: '4px 12px',
-              borderRadius: 4,
-              border: 'none',
-              background: '#3c3c3c',
-              color: '#d4d4d4',
-              cursor: 'pointer',
-              fontSize: 12,
+              width: 36, height: 36, borderRadius: 4, border: 'none',
+              background: isRecording ? '#f14c4c' : '#3c3c3c',
+              color: isRecording ? '#fff' : '#d4d4d4',
+              cursor: 'pointer', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontSize: 12, fontWeight: 600,
             }}
           >
-            Exit
+            REC
           </button>
-        )}
+          {isRecording && (
+            <span style={{ fontSize: 12, color: '#f14c4c' }}>Recording...</span>
+          )}
+          {viewMode === 'playback' && (
+            <span style={{ fontSize: 12, color: '#6a9955' }}>Playback Mode</span>
+          )}
+        </div>
 
-        {/* Recording/Playback status */}
-        {isRecording && (
-          <span style={{ fontSize: 12, color: '#f14c4c' }}>
-            Recording...
-          </span>
-        )}
-        {viewMode === 'playback' && (
-          <span style={{ fontSize: 12, color: '#6a9955' }}>
-            Playback Mode
-          </span>
-        )}
-
-        {/* Frame List button - available in both live and playback modes */}
-        {viewMode !== 'frameList' && (
-          <button
-            onClick={() => setViewMode('frameList')}
-            style={{
-              padding: '4px 12px',
-              borderRadius: 4,
-              border: 'none',
-              background: '#3c3c3c',
-              color: '#d4d4d4',
-              cursor: 'pointer',
-              fontSize: 12,
-            }}
-          >
-            Frame List
-          </button>
-        )}
-
-        {/* Debug button - available in both live and playback modes (not in frameList) */}
-        {viewMode !== 'debug' && viewMode !== 'frameList' && (
-          <button
-            onClick={() => setViewMode('debug')}
-            style={{
-              padding: '4px 12px',
-              borderRadius: 4,
-              border: 'none',
-              background: '#3c3c3c',
-              color: '#d4d4d4',
-              cursor: 'pointer',
-              fontSize: 12,
-            }}
-          >
-            Debug
-          </button>
-        )}
-
-        {/* HID Analysis button */}
-        {viewMode !== 'hidAnalysis' && viewMode !== 'frameList' && viewMode !== 'debug' && (
-          <button
-            onClick={() => setViewMode('hidAnalysis')}
-            style={{
-              padding: '4px 12px',
-              borderRadius: 4,
-              border: 'none',
-              background: '#3c3c3c',
-              color: '#d4d4d4',
-              cursor: 'pointer',
-              fontSize: 12,
-            }}
-          >
-            HID Analysis
-          </button>
-        )}
-
-        {/* Back button - returns to previous mode for frameList, debug, and hidAnalysis */}
-        {(viewMode === 'frameList' || viewMode === 'debug' || viewMode === 'hidAnalysis') && (
-          <button
-            onClick={() => setViewMode(prevViewModeRef.current)}
-            style={{
-              padding: '4px 12px',
-              borderRadius: 4,
-              border: 'none',
-              background: '#3c3c3c',
-              color: '#d4d4d4',
-              cursor: 'pointer',
-              fontSize: 12,
-            }}
-          >
-            ← Back
-          </button>
-        )}
+        {/* Navigation tabs - always visible */}
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          {[
+            { key: 'live', label: 'Live' },
+            { key: 'playback', label: 'Playback' },
+            { key: 'frameList', label: 'Frame List' },
+            { key: 'debug', label: 'Debug' },
+            { key: 'hidAnalysis', label: 'HID Analysis' },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => {
+                if (tab.key === viewMode) return;
+                if (tab.key === 'playback') {
+                  if (!player.isLoaded) {
+                    handleOpenFile();
+                    return;
+                  }
+                  handlePlayClick();
+                }
+                setViewMode(tab.key);
+              }}
+              style={{
+                padding: '5px 14px',
+                borderRadius: 4,
+                border: 'none',
+                background: viewMode === tab.key ? '#264f78' : '#3c3c3c',
+                color: viewMode === tab.key ? '#ffffff' : '#d4d4d4',
+                cursor: 'pointer',
+                fontSize: 12,
+                fontWeight: viewMode === tab.key ? 600 : 400,
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
         {/* Resolution config */}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>

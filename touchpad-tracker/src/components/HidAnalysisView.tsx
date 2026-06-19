@@ -97,24 +97,22 @@ const ResizableSplit: React.FC<{
   const isHoriz = direction === 'horizontal';
 
   return (
-    <div ref={containerRef} style={{ display: 'flex', flexDirection: isHoriz ? 'row' : 'column', overflow: 'hidden', ...style }}>
-      <div style={{ flex: isHoriz ? `0 0 ${size}px` : `0 0 ${size}px`, overflow: 'auto' }}>{children[0]}</div>
+    <div ref={containerRef} style={{ display: 'flex', flexDirection: 'row', overflow: 'hidden', ...style, height: '100%' }}>
+      <div style={{ flex: `0 0 ${size}px`, overflow: 'auto' }}>{children[0]}</div>
       <div
         onMouseDown={handleMouseDown}
         style={{
           flex: '0 0 5px',
-          cursor: isHoriz ? 'col-resize' : 'row-resize',
+          cursor: 'col-resize',
           background: '#3c3c3c',
-          backgroundImage: isHoriz
-            ? 'linear-gradient(180deg, transparent 40%, #6a9955 40%, #6a9955 60%, transparent 60%)'
-            : 'linear-gradient(90deg, transparent 40%, #6a9955 40%, #6a9955 60%, transparent 60%)',
-          backgroundSize: isHoriz ? '100% 20px' : '20px 100%',
+          backgroundImage: 'linear-gradient(180deg, transparent 40%, #6a9955 40%, #6a9955 60%, transparent 60%)',
+          backgroundSize: '100% 20px',
           backgroundRepeat: 'no-repeat',
           backgroundPosition: 'center',
           userSelect: 'none',
         }}
       />
-      <div style={{ flex: isHoriz ? `1 1 calc(100% - ${size + 5}px)` : `1 1 calc(100% - ${size + 5}px)`, overflow: 'auto' }}>{children[1]}</div>
+      <div style={{ flex: '1 1 0', overflow: 'auto' }}>{children[1]}</div>
     </div>
   );
 };
@@ -129,14 +127,13 @@ interface LiveFrameEntry {
   fields: Record<string, number>;
 }
 
-const RawDataView: React.FC<{
+const RawDataView = React.memo<{
   isListening: boolean;
   reportDataInput: string;
   setReportDataInput: (v: string) => void;
   tick: number;
-}> = ({ isListening, reportDataInput, setReportDataInput, tick }) => {
+}>(({ isListening, reportDataInput, setReportDataInput, tick }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  // Direct DOM update to avoid React reconciliation on high-frequency text changes
   useEffect(() => {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -156,24 +153,34 @@ const RawDataView: React.FC<{
       style={{ width:'100%', height:'100%', background:'#1e1e1e', color:'#d4d4d4', border:'1px solid #3c3c3c', padding:8, fontFamily:'monospace', fontSize:12, resize:'none', boxSizing:'border-box' }}
     />
   );
-};
+});
 
 const ROW_H = 22;
 const BUFFER = 10;
 
-const LiveFrameTable: React.FC<{ tick: number }> = ({ tick }) => {
+const Row = React.memo<{ f: LiveFrameEntry; i: number; names: string[] }>(({ f, i, names }) => (
+  <tr style={{ background: i % 2 === 0 ? '#1e1e1e' : '#252526' }}>
+    <td style={{ border:'1px solid #3c3c3c', padding:'2px 6px', fontSize:11, color:'#858585', whiteSpace:'nowrap' }}>{i}</td>
+    <td style={{ border:'1px solid #3c3c3c', padding:'2px 6px', fontSize:11, color:'#ce9178', whiteSpace:'nowrap' }}>0x{f.reportId.toString(16).toUpperCase().padStart(2,'0')}</td>
+    {names.map(n => (
+      <td key={n} style={{ border:'1px solid #3c3c3c', padding:'2px 6px', fontSize:11, textAlign:'right', color:'#d4d4d4', whiteSpace:'nowrap' }}>
+        {f.fields[n] !== undefined ? f.fields[n] : ''}
+      </td>
+    ))}
+  </tr>
+));
+
+const LiveFrameTable = React.memo<{ tick: number }>(({ tick }) => {
   const frames = liveFramesRef.current;
   const latest = frames.length > 0 ? frames[frames.length - 1] : null;
   const fieldNames = latest ? Object.keys(latest.fields) : [];
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [scrollTop, setScrollTop] = useState(0);
   const [viewH, setViewH] = useState(300);
+  const [scrollTop, setScrollTop] = useState(0);
   const totalH = frames.length * ROW_H;
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [tick]);
 
   const handleScroll = useCallback(() => {
@@ -196,13 +203,15 @@ const LiveFrameTable: React.FC<{ tick: number }> = ({ tick }) => {
   const startIdx = Math.max(0, Math.floor(scrollTop / ROW_H) - BUFFER);
   const endIdx = Math.min(frames.length, Math.ceil((scrollTop + viewH) / ROW_H) + BUFFER);
   const visibleRows = frames.slice(startIdx, endIdx);
+  // container fills viewport even when few rows exist
+  const containerH = Math.max(totalH, viewH);
 
   return (
     <div style={{ overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div style={{ fontSize: 11, color: '#6a9955', padding: '8px 8px 0 8px', flexShrink: 0 }}>Live: {frames.length} frames</div>
-      <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, overflow: 'auto', padding: '0 8px 8px 8px' }}>
+      <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, overflow: 'auto', padding: '0' }}>
         {frames.length > 0 && (
-          <div style={{ height: totalH, position: 'relative' }}>
+          <div style={{ height: containerH, position: 'relative' }}>
             <table style={{ borderCollapse: 'collapse', position: 'absolute', top: startIdx * ROW_H, left: 0 }}>
               <thead>
                 <tr style={{ background: '#252526' }}>
@@ -212,20 +221,7 @@ const LiveFrameTable: React.FC<{ tick: number }> = ({ tick }) => {
                 </tr>
               </thead>
               <tbody>
-                {visibleRows.map((f, i) => {
-                  const idx = startIdx + i;
-                  return (
-                    <tr key={idx} style={{ background: idx % 2 === 0 ? '#1e1e1e' : '#252526' }}>
-                      <td style={{ border:'1px solid #3c3c3c', padding:'2px 6px', fontSize:11, color:'#858585', whiteSpace:'nowrap' }}>{idx}</td>
-                      <td style={{ border:'1px solid #3c3c3c', padding:'2px 6px', fontSize:11, color:'#ce9178', whiteSpace:'nowrap' }}>0x{f.reportId.toString(16).toUpperCase().padStart(2,'0')}</td>
-                      {fieldNames.map(n => (
-                        <td key={n} style={{ border:'1px solid #3c3c3c', padding:'2px 6px', fontSize:11, textAlign:'right', color:'#d4d4d4', whiteSpace:'nowrap' }}>
-                          {f.fields[n] !== undefined ? f.fields[n] : ''}
-                        </td>
-                      ))}
-                    </tr>
-                  );
-                })}
+                {visibleRows.map((f, i) => <Row key={startIdx + i} f={f} i={startIdx + i} names={fieldNames} />)}
               </tbody>
             </table>
           </div>
@@ -234,7 +230,7 @@ const LiveFrameTable: React.FC<{ tick: number }> = ({ tick }) => {
       </div>
     </div>
   );
-};
+});
 
 interface HidAnalysisViewProps {
   i2cAddress?: number;
@@ -282,20 +278,20 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
   const [hasLenPrefix, setHasLenPrefix] = useState(false);
   const [reportDataAddrFilter, setReportDataAddrFilter] = useState('');
   const [reportDataDescStatus, setReportDataDescStatus] = useState('');
-  const [isListening, setIsListening] = useState(false);
-  const liveFrameCountRef = useRef(0);
-  const listeningFieldsRef = useRef<ReportField[]>([]);
-  const unsubscribeRef = useRef<(() => void) | null>(null);
-  const [liveTick, setLiveTick] = useState(0);
-  // Cleanup subscription on unmount
-  useEffect(() => {
-    return () => {
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
-      }
-    };
-  }, []);
+
+  // Per-tab Save MD refs
+  const tab1MdRef = useRef('');
+  const tab2MdRef = useRef('');
+  const tab3MdRef = useRef('');
+
+  const handleSaveMd = (which: number) => {
+    let md = '';
+    let name = '';
+    if (which === 1) { md = tab1MdRef.current; name = 'power-on-seq'; }
+    else if (which === 2) { md = tab2MdRef.current; name = 'device-desc'; }
+    else if (which === 3) { md = tab3MdRef.current; name = 'report-desc'; }
+    if (md) window.electronAPI.saveText?.(md, name + '-' + Date.now() + '.md');
+  };
 
   // === Handlers ===
 
@@ -313,6 +309,7 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
       }
 
       const md = generateSequenceMarkdown(result);
+      tab1MdRef.current = md;
       const html = marked.parse(md) as string;
       setSeqHtml(wrapHtml(html));
     } catch (err) {
@@ -325,7 +322,9 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
     const bytes = parseHexString(descHex);
     const desc = parseDescriptor(bytes);
     if (desc) {
-      setDescHtml(wrapHtml(marked.parse(generateDescMarkdown(desc)) as string));
+      const md = generateDescMarkdown(desc);
+      tab2MdRef.current = md;
+      setDescHtml(wrapHtml(marked.parse(md) as string));
     } else {
       setDescHtml(wrapHtml('<span class="warning">Need 30 bytes of HID I2C descriptor.</span>'));
     }
@@ -343,115 +342,11 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
     let md = `## Report Descriptor\n\n**${items.length} items**, **${fields.length} fields**\n\n`;
     md += '### Items\n```\n' + formatCommentedHex(bytes) + '\n```\n\n';
     md += generateReportSummary(fields);
+    tab3MdRef.current = md;
     setReportDescHtml(wrapHtml(marked.parse(md) as string));
   }, [reportDescHex]);
 
-  const handleLoadDescriptor = useCallback(() => {
-    try {
-      const descBytes = parseHexString(reportDataDescHex);
-      if (descBytes.length === 0) {
-        setReportDataDescStatus('❌ No valid hex bytes');
-        setReportDataHtml(wrapHtml('<span class="warning">Paste a report descriptor or click "Copy Desc from Tab 3".</span>'));
-        return;
-      }
-      const items = parseReportDescriptor(descBytes);
-      const fields = analyzeReportItems(items);
-      setReportFields(fields);
-      setReportDataDescStatus(`✅ Loaded (${descBytes.length} bytes, ${fields.length} fields)`);
-    } catch (err) {
-      console.error('Load descriptor error:', err);
-      setReportDataDescStatus('❌ Load failed');
-      setReportDataHtml(wrapHtml(`<span class="warning">Descriptor parse error: ${err}</span>`));
-    }
-  }, [reportDataDescHex]);
 
-  const handleParseData = useCallback(() => {
-    try {
-      // First check descriptor is loaded
-      const descBytes = parseHexString(reportDataDescHex);
-      if (descBytes.length === 0) {
-        setReportDataHtml(wrapHtml('<span class="warning">Please load Report Descriptor first.</span>'));
-        return;
-      }
-      // Re-parse descriptor each time (in case fields changed)
-      const items = parseReportDescriptor(descBytes);
-      const fields = analyzeReportItems(items);
-
-      const lines = reportDataInput.split(/\r?\n/).filter(l => l.trim().length > 0);
-      if (lines.length === 0) {
-        setReportDataHtml(wrapHtml(`<span class="warning">No report data found. Paste report data bytes (one frame per line) into the lower textarea, or click "Load Sample" to load test data.</span>`));
-        return;
-      }
-
-      // Parse optional address filter
-      let addrFilter: number | null = null;
-      const addrText = reportDataAddrFilter.trim();
-      if (addrText) {
-        const parsed = addrText.startsWith('0x') ? parseInt(addrText, 16) : parseInt(addrText, 16);
-        if (!isNaN(parsed)) addrFilter = parsed;
-      }
-
-      const { groups, skipped } = parseAllFrames(lines, fields, hasLenPrefix, addrFilter);
-
-      let total = 0;
-      for (const [, frames] of groups) { total += frames.length; }
-
-      let md = `## Report Data Analysis\n\n`;
-      md += `**${total} frames** parsed from ${lines.length} lines`;
-
-      if (groups.size > 0) {
-        const ids = [...groups.keys()].sort((a, b) => a - b);
-        md += ` (${groups.size} Report IDs: ${ids.map(id => `0x${id.toString(16).toUpperCase()}`).join(', ')})`;
-      }
-      if (skipped > 0) md += ` (filtered ${skipped} frames)`;
-      md += `\n\n`;
-
-      if (total === 0) {
-        const msg = skipped > 0
-          ? `⚠️ No matching frames found (filtered ${skipped} frames, address mismatch 0x${addrFilter?.toString(16).toUpperCase() || '??'})`
-          : '⚠️ No valid data frames parsed';
-        setReportDataHtml(wrapHtml(`<span class="warning">${msg}</span>`));
-        return;
-      }
-
-      // Show field table for ALL frames of each Report ID
-      for (const [rid, frames] of groups) {
-        if (frames.length === 0) continue;
-        md += `### Report ID ${rid.toString(16).toUpperCase().padStart(2, '0')}  (${frames.length} frames)\n\n`;
-
-        // Build dynamic columns from the first frame's field names
-        const fieldNames = Object.keys(frames[0].fields);
-        if (fieldNames.length === 0) {
-          md += '⚠️ No fields matched.\n\n';
-          continue;
-        }
-
-        // Header row
-        md += '| # |';
-        for (const name of fieldNames) md += ` ${name} |`;
-        md += '\n|---|';
-        for (const _ of fieldNames) md += '---|';
-        md += '\n';
-
-        // Data rows
-        for (let fi = 0; fi < frames.length; fi++) {
-          const f = frames[fi];
-          md += `| ${fi} |`;
-          for (const name of fieldNames) {
-            const val = f.fields[name];
-            md += ` ${val !== undefined ? val : ''} |`;
-          }
-          md += '\n';
-        }
-        md += '\n';
-      }
-
-      setReportDataHtml(wrapHtml(marked.parse(md) as string));
-    } catch (err) {
-      console.error('Parse report data error:', err);
-      setReportDataHtml(wrapHtml(`<span class="warning">Parse error: ${err}</span>`));
-    }
-  }, [reportDataDescHex, reportDataInput, hasLenPrefix, reportDataAddrFilter]);
 
   const handleToggleComment = useCallback(() => {
     if (!reportDescHex.trim()) return;
@@ -509,84 +404,9 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
   }, []);
 
 
-  const handleStartListening = useCallback(() => {
-    const descBytes = parseHexString(reportDataDescHex);
-    if (descBytes.length === 0) {
-      setReportDataHtml(wrapHtml('<span class="warning">Load a descriptor first.</span>'));
-      return;
-    }
-    const items = parseReportDescriptor(descBytes);
-    const fields = analyzeReportItems(items);
-    listeningFieldsRef.current = fields;
-    liveFrameCountRef.current = 0;
-    liveFramesRef.current = [];
-    liveRawInputRef.current = '';
 
-    // Batching: accumulate in refs, throttle React state to ~200ms intervals
-    const MAX_FRAMES = 10000;
-    const MAX_RAW_CHARS = 50000;
-    const pendingRaw: string[] = [];
-    const pendingFrames: LiveFrameEntry[] = [];
-    let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
-    function flush() {
-      flushTimer = null;
-      if (pendingRaw.length > 0) {
-        const rawChunk = pendingRaw.join('');
-        pendingRaw.length = 0;
-        liveRawInputRef.current += rawChunk;
-        if (liveRawInputRef.current.length > MAX_RAW_CHARS) {
-          liveRawInputRef.current = liveRawInputRef.current.slice(-MAX_RAW_CHARS / 2);
-        }
-      }
-      if (pendingFrames.length > 0) {
-        const chunk = pendingFrames.splice(0, pendingFrames.length);
-        liveFramesRef.current.push(...chunk);
-        if (liveFramesRef.current.length > MAX_FRAMES) {
-          liveFramesRef.current = liveFramesRef.current.slice(-MAX_FRAMES);
-        }
-      }
-      // Single counter increment triggers one React render
-      setLiveTick(function(t) { return t + 1; });
-    }
 
-    function scheduleFlush() {
-      if (!flushTimer) {
-        flushTimer = setTimeout(flush, 200);
-      }
-    }
-
-    setIsListening(true);
-
-    const unsub = window.electronAPI.onFingerFrame((frame: FingerFrame) => {
-      if (!frame.rawBytes || frame.rawBytes.length === 0) return;
-      const rawHex = frame.rawBytes.map(b => '0x' + b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
-      const fields2 = listeningFieldsRef.current;
-      if (fields2.length === 0) return;
-      const parsed = parseSingleFrame(frame.rawBytes, fields2, true, liveFrameCountRef.current);
-      if (parsed) {
-        liveFrameCountRef.current++;
-        pendingRaw.push(rawHex + '\n');
-        pendingFrames.push({ reportId: parsed.reportId, fields: parsed.fields, rawHex: rawHex });
-        scheduleFlush();
-      }
-    });
-    unsubscribeRef.current = unsub;
-  }, [reportDataDescHex]);
-
-  const handleStopListening = useCallback(() => {
-    setIsListening(false);
-    if (unsubscribeRef.current) {
-      unsubscribeRef.current();
-      unsubscribeRef.current = null;
-    }
-  }, []);
-
-  const copyFromTab3 = useCallback(() => {
-    setReportDataDescHex(reportDescHex);
-    setReportDataDescStatus('');
-    setReportDataHtml('');
-  }, [reportDescHex]);
 
   return (
     <div style={{ width:'100%', height:'100%', display:'flex', flexDirection:'column', background:'#1e1e1e', overflow:'hidden' }}>
@@ -616,6 +436,7 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
               <button onClick={handleAnalyzeSeq} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#6a9955', color:'#fff', cursor:'pointer', fontSize:12 }}>Analyze</button>
               <button onClick={()=>{setSeqInput(SEQ_SAMPLE);setSeqHtml('');setSeqResult(null);}} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Load Sample</button>
               <button onClick={()=>{setSeqInput('');setSeqHtml('');setSeqResult(null);}} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Clear</button>
+              <button onClick={()=>handleSaveMd(1)} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Save MD</button>
             </div>
             <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
               <textarea value={seqInput} onChange={e=>setSeqInput(e.target.value)} placeholder="Paste Saleae CSV export or I2C log..."
@@ -632,6 +453,7 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
               <button onClick={handleParseDesc} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#6a9955', color:'#fff', cursor:'pointer', fontSize:12 }}>Parse</button>
               <button onClick={()=>setDescHex(SAMPLE_DESC)} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Load Sample</button>
               <button onClick={()=>{setDescHex('');setDescHtml('');}} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Clear</button>
+              <button onClick={()=>handleSaveMd(2)} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Save MD</button>
             </div>
             <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
               <textarea value={descHex} onChange={e=>setDescHex(e.target.value)} placeholder="Paste 30 hex bytes..."
@@ -651,6 +473,7 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
               <button onClick={handleDescToWara} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Desc → .wara</button>
               <button onClick={handleWaraToDesc} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>.wara → Desc</button>
               <button onClick={()=>{setReportDescHex('');setReportDescHtml('');setReportFields([]);setWaraText('');setShowWaraEditor(false);}} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Clear All</button>
+              <button onClick={()=>handleSaveMd(3)} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Save MD</button>
               <span style={{ fontSize:11, color:'#808080', marginLeft:'auto' }}>{reportFields.length>0 ? `${reportFields.length} fields` : ''}</span>
             </div>
             {showWaraEditor && (
@@ -671,37 +494,20 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
 
         {/* TAB 4: Report Data Parser */}
         {subTab === 'reportDataParser' && (
-          <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
-            <div style={{ padding:'8px', display:'flex', gap:8, alignItems:'center', background:'#252526', borderBottom:'1px solid #3c3c3c', flexShrink:0 }}>
-              <button onClick={handleLoadDescriptor} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Load Descriptor</button>
-              <span style={{ fontSize:11, color:'#6a9955' }}>{reportDataDescStatus}</span>
-              <span style={{ flex:1 }} />
-              <label style={{ fontSize:12, color:'#d4d4d4' }}>Addr: <input value={reportDataAddrFilter} onChange={e=>setReportDataAddrFilter(e.target.value)} placeholder="e.g. 0x2C"
-                style={{ width:60, background:'#3c3c3c', color:'#d4d4d4', border:'none', padding:'2px 4px', borderRadius:2, fontSize:12 }} /></label>
-              <label style={{ fontSize:12, color:'#d4d4d4', display:'flex', alignItems:'center', gap:4 }}>
-                <input type="checkbox" checked={hasLenPrefix} onChange={e=>setHasLenPrefix(e.target.checked)} />
-                2-byte len prefix
-              </label>
-              <button onClick={copyFromTab3} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Copy Desc from Tab 3</button>
-              <button onClick={()=>{setReportDataDescHex(REPORT_DATA_DESC_SAMPLE);setReportDataInput(REPORT_DATA_SAMPLE);setHasLenPrefix(false);setReportDataAddrFilter('');setReportDataHtml('');setReportDataDescStatus('');}} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Load Sample</button>
-              <button onClick={isListening ? handleStopListening : handleStartListening} style={{ padding:'4px 12px', borderRadius:4, border:'none', background: isListening ? '#f14c4c' : '#6a9955', color:'#fff', cursor:'pointer', fontSize:12 }}>{isListening ? 'Stop Listening' : 'Start Listening'}</button>
-            </div>
-            <div style={{ padding:'4px 8px', background:'#1e1e1e', borderBottom:'1px solid #3c3c3c' }}>
-              <textarea value={reportDataDescHex} onChange={e=>setReportDataDescHex(e.target.value)} placeholder="Report Descriptor hex..."
-                style={{ width:'100%', height:50, background:'#252526', color:'#d4d4d4', border:'1px solid #3c3c3c', padding:4, fontFamily:'monospace', fontSize:12, resize:'vertical' }} />
-            </div>
-            <div style={{ padding:'4px 8px', display:'flex', gap:8, alignItems:'center', background:'#1e1e1e', borderBottom:'1px solid #3c3c3c', flexShrink:0 }}>
-              <button onClick={handleParseData} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#6a9955', color:'#fff', cursor:'pointer', fontSize:12 }}>Parse Report Data</button>
-              <button onClick={()=>{if(isListening){liveRawInputRef.current='';liveFramesRef.current=[];setLiveTick(function(t){return t+1})}else{setReportDataInput('');setReportDataHtml('');}}} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Clear</button>
-            </div>
-            <ResizableSplit direction="horizontal" defaultSize={400}>
-              <RawDataView isListening={isListening} reportDataInput={reportDataInput} setReportDataInput={setReportDataInput} tick={liveTick} />
-              <div style={{ overflow:'hidden', height:'100%' }}>
-                {isListening && <LiveFrameTable tick={liveTick} />}
-                {!isListening && <div dangerouslySetInnerHTML={{ __html: reportDataHtml }} />}
-              </div>
-            </ResizableSplit>
-          </div>
+          <ReportDataParserTab
+            reportDataDescHex={reportDataDescHex}
+            setReportDataDescHex={setReportDataDescHex}
+            reportDataHtml={reportDataHtml}
+            setReportDataHtml={setReportDataHtml}
+            hasLenPrefix={hasLenPrefix}
+            setHasLenPrefix={setHasLenPrefix}
+            reportDataAddrFilter={reportDataAddrFilter}
+            setReportDataAddrFilter={setReportDataAddrFilter}
+            reportDataDescStatus={reportDataDescStatus}
+            setReportDataDescStatus={setReportDataDescStatus}
+            reportDataInput={reportDataInput}
+            setReportDataInput={setReportDataInput}
+          />
         )}
       </div>
     </div>
@@ -709,3 +515,168 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
 };
 
 export default HidAnalysisView;
+
+// ── Separate Tab 4 component with its own tick state ──
+const ReportDataParserTab: React.FC<{
+  reportDataDescHex: string;
+  setReportDataDescHex: (v: string) => void;
+  reportDataHtml: string;
+  setReportDataHtml: (v: string) => void;
+  hasLenPrefix: boolean;
+  setHasLenPrefix: (v: boolean) => void;
+  reportDataAddrFilter: string;
+  setReportDataAddrFilter: (v: string) => void;
+  reportDataDescStatus: string;
+  setReportDataDescStatus: (v: string) => void;
+  reportDataInput: string;
+  setReportDataInput: (v: string) => void;
+}> = ({
+  reportDataDescHex, setReportDataDescHex, reportDataHtml, setReportDataHtml,
+  hasLenPrefix, setHasLenPrefix, reportDataAddrFilter, setReportDataAddrFilter,
+  reportDataDescStatus, setReportDataDescStatus, reportDataInput, setReportDataInput,
+}) => {
+  const [liveTick, setLiveTick] = useState(0);
+  const [isListening, setIsListening] = useState(false);
+  const liveFrameCountRef = useRef(0);
+  const listeningFieldsRef = useRef<ReportField[]>([]);
+  const unsubscribeRef = useRef<(() => void) | null>(null);
+  const tabMdRef = useRef('');
+  useEffect(() => {
+    return () => {
+      if (unsubscribeRef.current) { unsubscribeRef.current(); unsubscribeRef.current = null; }
+    };
+  }, []);
+  const handleSaveMd4 = useCallback(() => {
+    const md = tabMdRef.current;
+    if (!md) return;
+    window.electronAPI.saveText?.(md, 'report-data-parser-' + Date.now() + '.md');
+  }, []);
+
+  const handleStartListening = useCallback(() => {
+    const descBytes = parseHexString(reportDataDescHex);
+    if (descBytes.length === 0) { setReportDataHtml(wrapHtml('<span class="warning">Load a descriptor first.</span>')); return; }
+    const items = parseReportDescriptor(descBytes);
+    const fields = analyzeReportItems(items);
+    listeningFieldsRef.current = fields;
+    liveFrameCountRef.current = 0;
+    liveFramesRef.current = [];
+    liveRawInputRef.current = '';
+
+    const MAX_FRAMES = 10000; const MAX_RAW_CHARS = 50000;
+    const pendingRaw: string[] = []; const pendingFrames: LiveFrameEntry[] = [];
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function flush() {
+      flushTimer = null;
+      if (pendingRaw.length > 0) {
+        const rawChunk = pendingRaw.join(''); pendingRaw.length = 0;
+        liveRawInputRef.current += rawChunk;
+        if (liveRawInputRef.current.length > MAX_RAW_CHARS) liveRawInputRef.current = liveRawInputRef.current.slice(-MAX_RAW_CHARS / 2);
+      }
+      if (pendingFrames.length > 0) {
+        const chunk = pendingFrames.splice(0, pendingFrames.length);
+        liveFramesRef.current.push(...chunk);
+        if (liveFramesRef.current.length > MAX_FRAMES) liveFramesRef.current = liveFramesRef.current.slice(-MAX_FRAMES);
+      }
+      // Build markdown from live frames for Save MD
+      const all = liveFramesRef.current;
+      if (all.length > 0) {
+        const names = Object.keys(all[0].fields);
+        let m = '# Report Data Parser (Live)\n\n';
+        m += '**' + all.length + ' frames**\n\n';
+        m += '| # |';
+        for (const n of names) m += ' ' + n + ' |';
+        m += '\n|---|';
+        for (const _ of names) m += '---|';
+        m += '\n';
+        for (let fi = Math.max(0, all.length - 500); fi < all.length; fi++) {
+          const f = all[fi];
+          m += '| ' + fi + ' |';
+          for (const n of names) m += ' ' + (f.fields[n] !== undefined ? f.fields[n] : '') + ' |';
+          m += '\n';
+        }
+        tabMdRef.current = m;
+      }
+      setLiveTick(function(t) { return t + 1; });
+    }
+    function scheduleFlush() { if (!flushTimer) flushTimer = setTimeout(flush, 200); }
+    setIsListening(true);
+
+    const unsub = window.electronAPI.onFingerFrame((frame: FingerFrame) => {
+      if (!frame.rawBytes || frame.rawBytes.length === 0) return;
+      const rawHex = frame.rawBytes.map(b => '0x' + b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+      const fields2 = listeningFieldsRef.current; if (fields2.length === 0) return;
+      const parsed = parseSingleFrame(frame.rawBytes, fields2, true, liveFrameCountRef.current);
+      if (parsed) {
+        liveFrameCountRef.current++;
+        pendingRaw.push(rawHex + '\n');
+        pendingFrames.push({ reportId: parsed.reportId, fields: parsed.fields, rawHex: rawHex });
+        scheduleFlush();
+      }
+    });
+    unsubscribeRef.current = unsub;
+  }, [reportDataDescHex, setReportDataHtml]);
+
+  const handleStopListening = useCallback(() => {
+    setIsListening(false);
+    if (unsubscribeRef.current) { unsubscribeRef.current(); unsubscribeRef.current = null; }
+  }, []);
+
+  const handleParseData = useCallback(() => {
+    try {
+      const descBytes = parseHexString(reportDataDescHex);
+      if (descBytes.length === 0) { setReportDataHtml(wrapHtml('<span class="warning">Please load Report Descriptor first.</span>')); return; }
+      const items = parseReportDescriptor(descBytes);
+      const f = analyzeReportItems(items);
+      const lines = reportDataInput.split(/\r?\n/).filter(l => l.trim().length > 0);
+      if (lines.length === 0) return;
+      const { groups, skipped } = parseAllFrames(lines, f, hasLenPrefix, null);
+      let total = 0; for (const [, frs] of groups) total += frs.length;
+      let md = '## Report Data Analysis\n\n';
+      md += `**${total} frames** parsed from ${lines.length} lines`;
+      if (groups.size > 0) { const ids = [...groups.keys()].sort((a, b) => a - b); md += ` (${groups.size} Report IDs: ${ids.map(id => '0x' + id.toString(16).toUpperCase()).join(', ')})`; }
+      md += '\n\n';
+      for (const [rid, frs] of groups) {
+        if (frs.length === 0) continue;
+        const names = Object.keys(frs[0].fields);
+        md += `### Report ID ${rid.toString(16).toUpperCase().padStart(2, '0')}  (${frs.length} frames)\n\n`;
+        md += '| # |'; for (const n of names) md += ' ' + n + ' |'; md += '\n|---|'; for (const _ of names) md += '---|'; md += '\n';
+        for (let fi = 0; fi < frs.length; fi++) { const f2 = frs[fi]; md += `| ${fi} |`; for (const n of names) { const v = f2.fields[n]; md += ' ' + (v !== undefined ? v : '') + ' |'; } md += '\n'; }
+        md += '\n';
+      }
+      tabMdRef.current = md;
+      setReportDataHtml(wrapHtml(marked.parse(md) as string));
+    } catch (err) { setReportDataHtml(wrapHtml('<span class="warning">Parse error: ' + err + '</span>')); }
+  }, [reportDataDescHex, reportDataInput, hasLenPrefix, setReportDataHtml]);
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+      <div style={{ padding:'8px', display:'flex', gap:8, alignItems:'center', background:'#252526', borderBottom:'1px solid #3c3c3c', flexShrink:0 }}>
+        <button onClick={() => { try { const b = parseHexString(reportDataDescHex); if (b.length === 0) { setReportDataDescStatus('No valid hex'); return; } const it = parseReportDescriptor(b); const f = analyzeReportItems(it); listeningFieldsRef.current = f; setReportDataDescStatus("Loaded (" + b.length + "B, " + f.length + " fields)"); } catch (e) { setReportDataDescStatus('Parse failed'); } }} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Load Descriptor</button>
+        <span style={{ fontSize:11, color:'#6a9955' }}>{reportDataDescStatus}</span>
+        <span style={{ flex:1 }} />
+        <label style={{ fontSize:12, color:'#d4d4d4' }}>Addr: <input value={reportDataAddrFilter} onChange={e=>setReportDataAddrFilter(e.target.value)} placeholder="e.g. 0x2C" style={{ width:60, background:'#3c3c3c', color:'#d4d4d4', border:'none', padding:'2px 4px', borderRadius:2, fontSize:12 }} /></label>
+        <label style={{ fontSize:12, color:'#d4d4d4', display:'flex', alignItems:'center', gap:4 }}>
+          <input type="checkbox" checked={hasLenPrefix} onChange={e=>setHasLenPrefix(e.target.checked)} />
+          2-byte len prefix
+        </label>
+        <button onClick={()=>{setReportDataDescHex(REPORT_DATA_DESC_SAMPLE);setReportDataInput(REPORT_DATA_SAMPLE);setHasLenPrefix(false);setReportDataAddrFilter('');setReportDataHtml('');}} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Load Sample</button>
+        <button onClick={isListening ? handleStopListening : handleStartListening} style={{ padding:'4px 12px', borderRadius:4, border:'none', background: isListening ? '#f14c4c' : '#6a9955', color:'#fff', cursor:'pointer', fontSize:12 }}>{isListening ? 'Stop Listening' : 'Start Listening'}</button>
+      </div>
+      <div style={{ padding:'4px 8px', background:'#1e1e1e', borderBottom:'1px solid #3c3c3c' }}>
+        <textarea value={reportDataDescHex} onChange={e=>setReportDataDescHex(e.target.value)} placeholder="Report Descriptor hex..."
+          style={{ width:'100%', height:50, background:'#252526', color:'#d4d4d4', border:'1px solid #3c3c3c', padding:4, fontFamily:'monospace', fontSize:12, resize:'vertical' }} />
+      </div>
+      <div style={{ padding:'4px 8px', display:'flex', gap:8, alignItems:'center', background:'#1e1e1e', borderBottom:'1px solid #3c3c3c', flexShrink:0 }}>
+        <button onClick={handleParseData} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#6a9955', color:'#fff', cursor:'pointer', fontSize:12 }}>Parse Report Data</button>
+        <button onClick={()=>{if(isListening){liveRawInputRef.current='';liveFramesRef.current=[];setLiveTick(function(t){return t+1})}else{setReportDataInput('');setReportDataHtml('');}}} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Clear</button>
+        <button onClick={handleSaveMd4} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Save MD</button>
+      </div>
+      <ResizableSplit direction="horizontal" defaultSize={400}>
+        <RawDataView isListening={isListening} reportDataInput={reportDataInput} setReportDataInput={setReportDataInput} tick={liveTick} />
+        {isListening && <LiveFrameTable tick={liveTick} />}
+        {!isListening && <div style={{ height:'100%', overflow:'auto' }} dangerouslySetInnerHTML={{ __html: reportDataHtml }} />}
+      </ResizableSplit>
+    </div>
+  );
+};

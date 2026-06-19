@@ -217,6 +217,24 @@ ipcMain.handle('save-config', (_event, config: TouchpadConfig) => {
   store.set('config', config);
 });
 
+// IPC handler for saving text content
+ipcMain.handle('save-text', async (_event, data: string, defaultName: string) => {
+  const result = await dialog.showSaveDialog(mainWindow!, {
+    title: "Save Text File",
+    defaultPath: defaultName || "export-" + Date.now() + ".md",
+    filters: [
+      { name: "Markdown Files", extensions: ["md"] },
+      { name: "All Files", extensions: ["*"] }
+    ]
+  });
+  if (!result.canceled && result.filePath) {
+    const fs = await import('node:fs/promises');
+    await fs.writeFile(result.filePath, data, 'utf-8');
+    return result.filePath;
+  }
+  return null;
+});
+
 // IPC handler for saving recording
 ipcMain.handle('save-recording', async (_event, data: string) => {
   const result = await dialog.showSaveDialog(mainWindow!, {

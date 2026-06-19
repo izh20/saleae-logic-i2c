@@ -33,4 +33,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadRecording: (): Promise<{ path: string; content: string } | null> => {
     return ipcRenderer.invoke('load-recording');
   },
+
+  // Save text content to file
+  saveText: (data: string, defaultName: string): Promise<string | null> => {
+    return ipcRenderer.invoke('save-text', data, defaultName);
+  },
 });
