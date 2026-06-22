@@ -134,20 +134,17 @@ const RawDataView = React.memo<{
   tick: number;
 }>(({ isListening, reportDataInput, setReportDataInput, tick }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Auto-scroll to bottom while listening (live stream appends to the textarea).
   useEffect(() => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    if (isListening) {
-      ta.value = liveRawInputRef.current;
-      ta.scrollTop = ta.scrollHeight;
-    } else {
-      ta.value = reportDataInput;
+    if (isListening && textareaRef.current) {
+      textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
     }
-  }, [isListening, reportDataInput, tick]);
+  }, [isListening, tick]);
+  const value = isListening ? liveRawInputRef.current : reportDataInput;
   return (
     <textarea
       ref={textareaRef}
-      defaultValue={isListening ? liveRawInputRef.current : reportDataInput}
+      value={value}
       onChange={e => setReportDataInput(e.target.value)}
       placeholder="Paste report data bytes (one frame per line)..."
       style={{ width:'100%', height:'100%', background:'#1e1e1e', color:'#d4d4d4', border:'1px solid #3c3c3c', padding:8, fontFamily:'monospace', fontSize:12, resize:'none', boxSizing:'border-box' }}
@@ -629,7 +626,10 @@ const ReportDataParserTab: React.FC<{
       const items = parseReportDescriptor(descBytes);
       const f = analyzeReportItems(items);
       const lines = reportDataInput.split(/\r?\n/).filter(l => l.trim().length > 0);
-      if (lines.length === 0) return;
+      if (lines.length === 0) {
+        setReportDataHtml(wrapHtml('<span class="warning">No report data to parse.</span>'));
+        return;
+      }
       const { groups, skipped } = parseAllFrames(lines, f, hasLenPrefix, null);
       let total = 0; for (const [, frs] of groups) total += frs.length;
       let md = '## Report Data Analysis\n\n';
@@ -674,8 +674,9 @@ const ReportDataParserTab: React.FC<{
       </div>
       <ResizableSplit direction="horizontal" defaultSize={400}>
         <RawDataView isListening={isListening} reportDataInput={reportDataInput} setReportDataInput={setReportDataInput} tick={liveTick} />
-        {isListening && <LiveFrameTable tick={liveTick} />}
-        {!isListening && <div style={{ height:'100%', overflow:'auto' }} dangerouslySetInnerHTML={{ __html: reportDataHtml }} />}
+        {isListening
+          ? <LiveFrameTable tick={liveTick} />
+          : <div style={{ height:'100%', overflow:'auto' }} dangerouslySetInnerHTML={{ __html: reportDataHtml }} />}
       </ResizableSplit>
     </div>
   );
