@@ -496,7 +496,9 @@ const App: React.FC = () => {
               backgroundColor: '#2d2d2d',
               borderRadius: 8,
               padding: 24,
-              maxWidth: 500,
+              maxWidth: 760,
+              maxHeight: '85vh',
+              overflowY: 'auto',
               color: '#d4d4d4',
               fontFamily: 'monospace',
               fontSize: 13,
@@ -504,74 +506,172 @@ const App: React.FC = () => {
             }}
             onClick={e => e.stopPropagation()}
           >
-            <div style={{ color: '#6a9955', fontSize: 16, fontWeight: 'bold', marginBottom: 16 }}>
+            <div style={{ color: '#6a9955', fontSize: 16, fontWeight: 'bold', marginBottom: 4 }}>
               Touchpad Tracker Help
             </div>
+            <div style={{ color: '#858585', fontSize: 12, marginBottom: 16 }}>
+              Saleae Logic Pro 16 → I²C → HID 触摸板协议分析工具
+            </div>
 
+            {/* ── 快捷键 ── */}
             <div style={{ marginBottom: 16 }}>
               <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>快捷键</div>
               <table>
                 <tbody>
                   <tr><td style={{ paddingRight: 16 }}>H</td><td>显示/隐藏帮助</td></tr>
                   <tr><td style={{ paddingRight: 16 }}>R</td><td>开始/停止录制</td></tr>
-                  <tr><td style={{ paddingRight: 16 }}>C</td><td>清除所有轨迹</td></tr>
-                  <tr><td style={{ paddingRight: 16 }}>K</td><td>仅清除笔轨迹</td></tr>
-                  <tr><td style={{ paddingRight: 16 }}>空格</td><td>播放/暂停（回放模式）</td></tr>
-                  <tr><td style={{ paddingRight: 16 }}>←</td><td>逐帧后退（回放模式）</td></tr>
-                  <tr><td style={{ paddingRight: 16 }}>→</td><td>逐帧前进（回放模式）</td></tr>
+                  <tr><td style={{ paddingRight: 16 }}>C</td><td>清除所有轨迹（手指 + 笔）</td></tr>
+                  <tr><td style={{ paddingRight: 16 }}>K</td><td>仅清除笔轨迹（Live 模式）</td></tr>
+                  <tr><td style={{ paddingRight: 16 }}>Space</td><td>播放/暂停（Playback 模式）</td></tr>
+                  <tr><td style={{ paddingRight: 16 }}>← / →</td><td>逐帧后退/前进（Playback 模式）</td></tr>
                 </tbody>
               </table>
             </div>
 
+            {/* ── 五种工作模式 ── */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>手指颜色</div>
-              <div><span style={{ color: '#ff6b6b' }}>■</span> 指0 (红色)</div>
-              <div><span style={{ color: '#4ecdc4' }}>■</span> 指1 (青色)</div>
-              <div><span style={{ color: '#45b7d1' }}>■</span> 指2 (蓝色)</div>
-              <div><span style={{ color: '#96ceb4' }}>■</span> 指3 (绿色)</div>
-              <div><span style={{ color: '#ffeaa7' }}>■</span> 指4 (黄色)</div>
+              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>五种工作模式</div>
+              <table style={{ width: '100%' }}>
+                <tbody>
+                  <tr>
+                    <td style={{ paddingRight: 12, color: '#6a9955', whiteSpace: 'nowrap' }}>Live</td>
+                    <td>UDP 50000 实时流；Canvas 绘制手指/笔轨迹；状态栏显示 Hz/手指数/坐标/笔参数</td>
+                  </tr>
+                  <tr>
+                    <td style={{ paddingRight: 12, color: '#6a9955', whiteSpace: 'nowrap' }}>Playback</td>
+                    <td>JSON / Saleae CSV 回放；O(1) 单帧撤销 + 200 帧快照；进度条跳转；10–500 Hz 可调</td>
+                  </tr>
+                  <tr>
+                    <td style={{ paddingRight: 12, color: '#6a9955', whiteSpace: 'nowrap' }}>Frame List</td>
+                    <td>实时累加（≤20000 帧）或回放帧表；点选行跳转到该帧</td>
+                  </tr>
+                  <tr>
+                    <td style={{ paddingRight: 12, color: '#6a9955', whiteSpace: 'nowrap' }}>Debug</td>
+                    <td>解析笔包 bytes[15..46] 为 16 个 s16 小端通道；Dec/Hex/Bin 切换</td>
+                  </tr>
+                  <tr>
+                    <td style={{ paddingRight: 12, color: '#6a9955', whiteSpace: 'nowrap' }}>HID Analysis</td>
+                    <td>4 个子 Tab：Power-On 序列 / Device Desc / Report Desc / Report Data</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
 
+            {/* ── 触摸板协议 ── */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>手指状态</div>
-              <div>LargeTouch: 大面积按下</div>
-              <div>FingerTouch: 手指按下</div>
-              <div>FingerRelease: 手指抬起（清除轨迹）</div>
-              <div>LargeRelease: 大面积抬起（清除轨迹）</div>
+              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>触摸板数据包格式</div>
+              <table style={{ width: '100%' }}>
+                <thead>
+                  <tr style={{ color: '#858585', fontSize: 11 }}>
+                    <th style={{ textAlign: 'left', paddingRight: 8 }}>帧头</th>
+                    <th style={{ textAlign: 'left', paddingRight: 8 }}>长度</th>
+                    <th style={{ textAlign: 'left' }}>含义</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td style={{ paddingRight: 8 }}>0x2F 0x00 0x04</td><td style={{ paddingRight: 8 }}>47B</td><td>完整手指包：5×8B 槽位（id/state/X/Y/L/W/P）+ scantime/fingerCount/keyState</td></tr>
+                  <tr><td style={{ paddingRight: 8 }}>0x20 0x00 0x04</td><td style={{ paddingRight: 8 }}>32B</td><td>简化手指包：5×5B 槽位（仅 id/state/X/Y）</td></tr>
+                  <tr><td style={{ paddingRight: 8 }}>0x2F 0x00 0x08</td><td style={{ paddingRight: 8 }}>47B</td><td>笔包：state/Id/X/Y/Pressure/TiltX/TiltY + 16 通道调试数据</td></tr>
+                </tbody>
+              </table>
             </div>
 
+            {/* ── 手指颜色 ── */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>笔状态颜色</div>
-              <div><span style={{ color: '#ffffff' }}>■ 白色</span> - Tip（接触）</div>
-              <div><span style={{ color: '#ff6b6b' }}>■ 红色</span> - Hover（悬停）</div>
-              <div><span style={{ color: '#808080' }}>■ 灰色</span> - Release（释放）</div>
+              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>手指颜色 / 状态</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
+                <span><span style={{ color: '#ff6b6b' }}>■</span> F0 红</span>
+                <span><span style={{ color: '#4ecdc4' }}>■</span> F1 青</span>
+                <span><span style={{ color: '#45b7d1' }}>■</span> F2 蓝</span>
+                <span><span style={{ color: '#96ceb4' }}>■</span> F3 绿</span>
+                <span><span style={{ color: '#ffeaa7' }}>■</span> F4 黄</span>
+              </div>
+              <div style={{ fontSize: 12, color: '#bbbbbb' }}>
+                state=3 FingerTouch 细线实心2px ｜ state=2 LargeTouch 细线空心4px
+                <br />state=1 FingerRelease / state=0 LargeRelease → 清除该 fingerId 轨迹
+              </div>
             </div>
 
+            {/* ── 笔状态 ── */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>笔解析模式</div>
-              <div><strong>TP Mode:</strong> 使用字节3的状态值</div>
-              <div><strong>MCU Mode:</strong> 根据压力值判断</div>
-              <div style={{ fontSize: 12, color: '#808080' }}>pressure &gt;= 100 为 Tip，&lt; 100 为 Hover</div>
+              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>笔状态 / 解析模式</div>
+              <div>
+                <span style={{ color: '#ffffff' }}>■ 白色</span> Tip（接触） ｜
+                <span style={{ color: '#ff6b6b' }}>■ 红</span> Hover（悬停） ｜
+                <span style={{ color: '#808080' }}>■ 灰</span> Release（断点标记）
+              </div>
+              <div style={{ fontSize: 12, color: '#bbbbbb', marginTop: 4 }}>
+                <strong>TP Mode:</strong> 直接使用字节3状态值（0x20=Hover, 0x21=Tip）
+                <br /><strong>MCU Mode:</strong> pressure ≥ 100 为 Tip，&lt; 100 为 Hover
+              </div>
             </div>
 
+            {/* ── HID Analysis 子 Tab ── */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>Frame List 帧列表</div>
-              <div>实时模式：点击 Start 累计帧数据，Stop 暂停，Clear 清空</div>
-              <div>回放模式：点击某行可跳转至对应帧</div>
-              <div style={{ fontSize: 12, color: '#808080' }}>列：(#)行号、Scan scantime/Δ、(Fingers)手指、(Stylus)笔、(Pkt)包类型</div>
+              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>HID Analysis · 4 个子 Tab</div>
+              <table style={{ width: '100%' }}>
+                <tbody>
+                  <tr>
+                    <td style={{ paddingRight: 12, color: '#ce9178', whiteSpace: 'nowrap', verticalAlign: 'top' }}>Power-On Seq</td>
+                    <td>
+                      粘贴 I²C 日志（自动识别 Saleae CSV / 时间戳方括号 / <code style={{ background:'#3c3c3c', padding:'0 4px' }}>W: hex hex</code> / <code style={{ background:'#3c3c3c', padding:'0 4px' }}>write to 0xNN ack data: ...</code> / 裸 hex），
+                      解码 RESET / GET_REPORT / SET_REPORT / SET_POWER 等 opcode，含字段级 payload 还原。
+                      完成后字段表自动联动到 Report Desc。
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ paddingRight: 12, color: '#ce9178', whiteSpace: 'nowrap', verticalAlign: 'top' }}>Device Desc</td>
+                    <td>30 字节 HID-I²C 设备描述符按字段解码：VID/PID、ReportDescRegister、InputRegister、CommandRegister 等；含 ✅/⚠️ 校验。</td>
+                  </tr>
+                  <tr>
+                    <td style={{ paddingRight: 12, color: '#ce9178', whiteSpace: 'nowrap', verticalAlign: 'top' }}>Report Desc</td>
+                    <td>
+                      解析 Report Descriptor → 展开为字段表（Usage 名、bitOffset/bitSize、Logical/Physical Range）。
+                      <br />
+                      <span style={{ color: '#6a9955' }}>Comment ON/OFF</span> 切换带注释的 hex 视图。
+                      <br />
+                      <span style={{ color: '#6a9955' }}>Desc → .wara</span> 把描述符导出为 Waratah TOML 文本格式；
+                      <span style={{ color: '#6a9955' }}>.wara → Desc</span> 重新生成字节描述符。
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ paddingRight: 12, color: '#ce9178', whiteSpace: 'nowrap', verticalAlign: 'top' }}>Report Data</td>
+                    <td>
+                      加载 Report Descriptor 后可粘贴 report data 静态解析（按 Report ID 分组），
+                      或点 <span style={{ color: '#6a9955' }}>Start Listening</span> 订阅实时 UDP 帧持续解析。
+                      支持 2 字节长度前缀开关；实时模式使用虚拟滚动，5 万帧不卡。
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
 
+            {/* ── 顶部工具栏 ── */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>Debug 调试视图</div>
-              <div>解析笔包 bytes[15..46] 为 16 个 s16 小端通道 (D0..D15)</div>
-              <div>格式切换：Dec (s16) / Dec (u16) / Hex / Binary</div>
-              <div>实时模式：保留最近 200 帧，支持 Pause/Resume/Clear</div>
-              <div>回放模式：点击某行可跳转至对应帧</div>
-              <div style={{ fontSize: 12, color: '#808080' }}>录制与保存：使用顶部 REC 按钮录制，JSON 文件会包含 <code style={{ background: '#3c3c3c', padding: '0 4px', borderRadius: 2 }}>debugChannels</code> 字段。旧录制文件（无此字段）兼容，Debug 列显示 —</div>
+              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>顶部工具栏</div>
+              <div>
+                <span style={{ color: '#6a9955' }}>I2C Addr</span> 切换 Saleae CSV 解析的目标 I²C 地址（默认 0x2C；支持 0x15、0x5D）。
+                <br />
+                <span style={{ color: '#6a9955' }}>Open File</span> 打开 .json（应用录制）或 Saleae 导出的 .csv/.txt。
+                <br />
+                <span style={{ color: '#6a9955' }}>Max X / Max Y</span> 触摸板坐标上限（默认 4000×3000），用于 Canvas 归一化。
+                <br />
+                <span style={{ color: '#6a9955' }}>Stylus</span> TP Mode / MCU Mode 切换。
+              </div>
+            </div>
+
+            {/* ── 保存 ── */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>导出 / 保存</div>
+              <div>
+                <span style={{ color: '#6a9955' }}>REC</span> → 录制为 .json（含 <code style={{ background: '#3c3c3c', padding: '0 4px', borderRadius: 2 }}>debugChannels</code>）。
+                <br />
+                每个 HID Analysis 子 Tab 顶栏的 <span style={{ color: '#6a9955' }}>Save MD</span> 按钮导出该次分析的 Markdown 报告。
+              </div>
             </div>
 
             <div style={{ color: '#808080', fontSize: 12 }}>
-              按 H 或点击外部区域关闭
+              按 H 或点击外部区域关闭 ｜ Saleae 通道：SCL=0, SDA=1 ｜ UDP 端口：50000
             </div>
           </div>
         </div>
