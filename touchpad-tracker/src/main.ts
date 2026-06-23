@@ -178,6 +178,18 @@ function startUdpServer() {
         if (DEBUG) console.log('TX data array:', dataArray);
         const timestamp = Date.now();
 
+        // Always forward the raw TX bytes to a parallel IPC channel for the
+        // generic Report Data Parser (HID Analysis). This channel carries
+        // every report ID, not just finger / stylus.
+        const i2cAddressNum = parseHexOrDec(message.data.addr || '0');
+        if (mainWindow) {
+          mainWindow.webContents.send('i2c-raw-frame', {
+            timestamp,
+            i2cAddress: i2cAddressNum,
+            rawBytes: dataArray.map(d => parseHexOrDec(d)),
+          });
+        }
+
         // Try to parse as finger frame first, then as stylus frame
         let frame = parseFingerFrame(dataArray, timestamp);
         if (!frame) {

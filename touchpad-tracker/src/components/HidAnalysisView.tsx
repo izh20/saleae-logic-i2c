@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { marked } from 'marked';
 import { HidI2cDescriptor, ReportField } from '../hid/types';
-import { parseHexString } from '../hid/HidDescriptorFormatter';
+import { parseHexString, formatFieldValue } from '../hid/HidDescriptorFormatter';
 import { parseDescriptor, generateMarkdown as generateDescMarkdown } from '../hid/HidI2cDescriptorParser';
 import { parseDescriptor as parseReportDescriptor, formatCommentedHex } from '../hid/HidDescriptorParser';
 import { analyzeReportItems, generateReportSummary } from '../hid/ReportAnalyzer';
@@ -10,7 +10,7 @@ import {
 } from '../hid/HidI2cSequenceAnalyzer';
 import { parseAllFrames } from '../hid/ReportBatchParser';
 import { parseSingleFrame } from '../hid/HidReportDataParser';
-import { FingerFrame } from '../types/finger';
+// (FingerFrame is consumed via the type declaration file; no runtime import needed here)
 import { generateWara } from '../hid/WaraGenerator';
 import { WaraToDescriptorGenerator } from '../hid/WaraToDescriptorGenerator';
 
@@ -124,7 +124,7 @@ const liveRawInputRef = { current: '' };
 interface LiveFrameEntry {
   reportId: number;
   rawHex: string;
-  fields: Record<string, number>;
+  fields: Record<string, { value: number; bitSize: number }>;
 }
 
 const RawDataView = React.memo<{
@@ -161,7 +161,7 @@ const Row = React.memo<{ f: LiveFrameEntry; i: number; names: string[] }>(({ f, 
     <td style={{ border:'1px solid #3c3c3c', padding:'2px 6px', fontSize:11, color:'#ce9178', whiteSpace:'nowrap' }}>0x{f.reportId.toString(16).toUpperCase().padStart(2,'0')}</td>
     {names.map(n => (
       <td key={n} style={{ border:'1px solid #3c3c3c', padding:'2px 6px', fontSize:11, textAlign:'right', color:'#d4d4d4', whiteSpace:'nowrap' }}>
-        {f.fields[n] !== undefined ? f.fields[n] : ''}
+        {f.fields[n] !== undefined ? formatFieldValue(f.fields[n].value, f.fields[n].bitSize) : ''}
       </td>
     ))}
   </tr>
@@ -559,6 +559,14 @@ const ReportDataParserTab: React.FC<{
     liveFramesRef.current = [];
     liveRawInputRef.current = '';
 
+    // Parse addr filter (UI input) once at listen-start so a mid-listen
+    // edit doesn't change filtering semantics partway through.
+    const addrFilter = reportDataAddrFilter.trim()
+      ? (reportDataAddrFilter.startsWith('0x') || reportDataAddrFilter.startsWith('0X')
+          ? parseInt(reportDataAddrFilter, 16)
+          : parseInt(reportDataAddrFilter, 10))
+      : null;
+
     const MAX_FRAMES = 10000; const MAX_RAW_CHARS = 50000;
     const pendingRaw: string[] = []; const pendingFrames: LiveFrameEntry[] = [];
     let flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -589,7 +597,10 @@ const ReportDataParserTab: React.FC<{
         for (let fi = Math.max(0, all.length - 500); fi < all.length; fi++) {
           const f = all[fi];
           m += '| ' + fi + ' |';
-          for (const n of names) m += ' ' + (f.fields[n] !== undefined ? f.fields[n] : '') + ' |';
+          for (const n of names) {
+            const fld = f.fields[n];
+            m += ' ' + (fld !== undefined ? formatFieldValue(fld.value, fld.bitSize) : '') + ' |';
+          }
           m += '\n';
         }
         tabMdRef.current = m;
@@ -599,11 +610,17 @@ const ReportDataParserTab: React.FC<{
     function scheduleFlush() { if (!flushTimer) flushTimer = setTimeout(flush, 200); }
     setIsListening(true);
 
-    const unsub = window.electronAPI.onFingerFrame((frame: FingerFrame) => {
-      if (!frame.rawBytes || frame.rawBytes.length === 0) return;
-      const rawHex = frame.rawBytes.map(b => '0x' + b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+    // Subscribe to the parallel raw I²C channel so we see every report ID,
+    // not just finger / stylus. The fingerprint of "this is a valid report"
+    // is decided by parseSingleFrame against the loaded descriptor fields.
+    const unsub = window.electronAPI.onI2cRawFrame?.((rawFrame) => {
+      if (!rawFrame.rawBytes || rawFrame.rawBytes.length === 0) return;
+      if (addrFilter !== null && rawFrame.i2cAddress !== addrFilter) return;
+      const rawHex = rawFrame.rawBytes.map(b => '0x' + b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
       const fields2 = listeningFieldsRef.current; if (fields2.length === 0) return;
-      const parsed = parseSingleFrame(frame.rawBytes, fields2, true, liveFrameCountRef.current);
+      // hasLenPrefix state controls the 2-byte HID-I²C length prefix
+      // assumption, matching the static Parse Report Data path.
+      const parsed = parseSingleFrame(rawFrame.rawBytes, fields2, hasLenPrefix, liveFrameCountRef.current);
       if (parsed) {
         liveFrameCountRef.current++;
         pendingRaw.push(rawHex + '\n');
@@ -611,8 +628,8 @@ const ReportDataParserTab: React.FC<{
         scheduleFlush();
       }
     });
-    unsubscribeRef.current = unsub;
-  }, [reportDataDescHex, setReportDataHtml]);
+    unsubscribeRef.current = unsub || null;
+  }, [reportDataDescHex, reportDataAddrFilter, hasLenPrefix, setReportDataHtml]);
 
   const handleStopListening = useCallback(() => {
     setIsListening(false);
@@ -641,7 +658,7 @@ const ReportDataParserTab: React.FC<{
         const names = Object.keys(frs[0].fields);
         md += `### Report ID ${rid.toString(16).toUpperCase().padStart(2, '0')}  (${frs.length} frames)\n\n`;
         md += '| # |'; for (const n of names) md += ' ' + n + ' |'; md += '\n|---|'; for (const _ of names) md += '---|'; md += '\n';
-        for (let fi = 0; fi < frs.length; fi++) { const f2 = frs[fi]; md += `| ${fi} |`; for (const n of names) { const v = f2.fields[n]; md += ' ' + (v !== undefined ? v : '') + ' |'; } md += '\n'; }
+        for (let fi = 0; fi < frs.length; fi++) { const f2 = frs[fi]; md += `| ${fi} |`; for (const n of names) { const f = f2.fields[n]; md += ' ' + (f !== undefined ? formatFieldValue(f.value, f.bitSize) : '') + ' |'; } md += '\n'; }
         md += '\n';
       }
       tabMdRef.current = md;

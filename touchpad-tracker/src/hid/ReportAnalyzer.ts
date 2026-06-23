@@ -4,6 +4,7 @@ import {
   MAIN_FLAG_CONSTANT, MAIN_FLAG_VARIABLE, MAIN_FLAG_RELATIVE,
 } from './HidConstants';
 import { getUsageName } from './HidUsagePages';
+import { formatFieldValue } from './HidDescriptorFormatter';
 
 interface GlobalState {
   usagePage: number;
@@ -243,7 +244,7 @@ export function generateReportSummary(fields: ReportField[]): string {
 
       let rangeStr = '';
       if (!f.isConstant) {
-        rangeStr = `[${f.logicalMinimum} ~ ${f.logicalMaximum}]`;
+        rangeStr = `[${formatFieldValue(f.logicalMinimum, f.bitSize)} ~ ${formatFieldValue(f.logicalMaximum, f.bitSize)}]`;
         if (f.isRelative) rangeStr += ' *(relative)*';
       }
 

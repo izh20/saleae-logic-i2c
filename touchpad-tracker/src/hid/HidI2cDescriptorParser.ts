@@ -1,5 +1,6 @@
 import { HidI2cDescriptor } from './types';
 import { HID_DESC_LENGTH, HID_DESC_BCD_VERSION } from './HidConstants';
+import { formatByteCount } from './HidDescriptorFormatter';
 
 export function parseDescriptor(data: number[]): HidI2cDescriptor | null {
   if (!data || data.length < HID_DESC_LENGTH) return null;
@@ -71,34 +72,34 @@ export function generateMarkdown(desc: HidI2cDescriptor): string {
 | PID | ${fmt(desc.productId)} |
 | Version | ${fmt(desc.versionId)} |
 | BCD Version | ${fmt(desc.bcdVersion)} |
-| Report Desc Length | ${desc.reportDescLength} bytes |
+| Report Desc Length | ${formatByteCount(desc.reportDescLength)} bytes |
 
 ### Register Map
 | Register | Address | Max Length | Direction |
 |----------|---------|------------|-----------|
 | Report Descriptor | ${fmt(desc.reportDescRegister)} | — | Read |
-| Input | ${fmt(desc.inputRegister)} | ${desc.maxInputLength} bytes | Read |
-| Output | ${fmt(desc.outputRegister)} | ${desc.maxOutputLength} bytes | Write |
+| Input | ${fmt(desc.inputRegister)} | ${formatByteCount(desc.maxInputLength)} bytes | Read |
+| Output | ${fmt(desc.outputRegister)} | ${formatByteCount(desc.maxOutputLength)} bytes | Write |
 | Command | ${fmt(desc.commandRegister)} | — | Write |
 | Data | ${fmt(desc.dataRegister)} | — | Read/Write |
 
 ### Raw Fields
 | Offset | Field | Value | Description |
 |--------|-------|-------|-------------|
-| 0x00 | wHIDDescLength | ${desc.hidDescLength} | Descriptor length |
+| 0x00 | wHIDDescLength | ${formatByteCount(desc.hidDescLength)} | Descriptor length |
 | 0x02 | bcdVersion | ${fmt(desc.bcdVersion)} | Protocol version |
-| 0x04 | wReportDescLength | ${desc.reportDescLength} | Report descriptor length |
+| 0x04 | wReportDescLength | ${formatByteCount(desc.reportDescLength)} | Report descriptor length |
 | 0x06 | wReportDescRegister | ${fmt(desc.reportDescRegister)} | Report desc register addr |
 | 0x08 | wInputRegister | ${fmt(desc.inputRegister)} | Input register addr |
-| 0x0A | wMaxInputLength | ${desc.maxInputLength} | Max input length |
+| 0x0A | wMaxInputLength | ${formatByteCount(desc.maxInputLength)} | Max input length |
 | 0x0C | wOutputRegister | ${fmt(desc.outputRegister)} | Output register addr |
-| 0x0E | wMaxOutputLength | ${desc.maxOutputLength} | Max output length |
+| 0x0E | wMaxOutputLength | ${formatByteCount(desc.maxOutputLength)} | Max output length |
 | 0x10 | wCommandRegister | ${fmt(desc.commandRegister)} | Command register addr |
 | 0x12 | wDataRegister | ${fmt(desc.dataRegister)} | Data register addr |
 | 0x14 | wVendorID | ${fmt(desc.vendorId)} | USB VID |
 | 0x16 | wProductID | ${fmt(desc.productId)} | USB PID |
 | 0x18 | wVersionID | ${fmt(desc.versionId)} | Firmware version |
-| 0x1A | Reserved | ${desc.reserved} | Reserved |
+| 0x1A | Reserved | ${formatByteCount(desc.reserved)} | Reserved |
 
 ### Validation
 ${validStr}

@@ -53,3 +53,31 @@ export function formatBytes(bytes: number[]): string {
     .map(b => (b & 0xFF).toString(16).toUpperCase().padStart(2, '0'))
     .join(' ');
 }
+
+/**
+ * Format a numeric field value consistently across all HID Analysis sub-tabs.
+ * Output style: 1-bit boolean → "0(off)/1(on)";
+ *                N-bit value  → "0xHEX(decimal)", width-padded by N.
+ *
+ * This is the canonical formatter — every place that displays a field value
+ * (Tab 1 Power-On Seq, Tab 3 Report Desc range, Tab 4 Report Data Parser)
+ * should funnel through this function so the user sees the same format
+ * everywhere.
+ */
+export function formatFieldValue(value: number, bitSize: number): string {
+  if (bitSize === 1) return value === 1 ? '1(on)' : '0(off)';
+  if (bitSize <= 8)  return `0x${(value & 0xFF).toString(16).toUpperCase().padStart(2, '0')}(${value})`;
+  if (bitSize <= 16) return `0x${(value & 0xFFFF).toString(16).toUpperCase().padStart(4, '0')}(${value})`;
+  return `0x${(value >>> 0).toString(16).toUpperCase()}(${value})`;
+}
+
+/**
+ * Format a byte count (no fixed bit width) in the same dual hex+dec style
+ * as formatFieldValue. Used by Tab 2 Device Desc for maxInputLength /
+ * maxOutputLength / reportDescLength / hidDescLength / reserved.
+ */
+export function formatByteCount(value: number): string {
+  if (value <= 0xFF) return `0x${(value & 0xFF).toString(16).toUpperCase().padStart(2, '0')}(${value})`;
+  if (value <= 0xFFFF) return `0x${(value & 0xFFFF).toString(16).toUpperCase().padStart(4, '0')}(${value})`;
+  return `0x${(value >>> 0).toString(16).toUpperCase()}(${value})`;
+}

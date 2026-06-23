@@ -84,11 +84,17 @@ export interface HidI2cEvent {
   rawData: number[];
 }
 
+/** One parsed field value, with the bit size that was used to extract it. */
+export interface ParsedField {
+  value: number;
+  bitSize: number;
+}
+
 /** One parsed report data frame */
 export interface ParsedReportFrame {
   frameIndex: number;
   reportId: number;
-  fields: Record<string, number>;  // fieldName → value
+  fields: Record<string, ParsedField>;  // fieldName → { value, bitSize }
 }
 
 /** One touch contact */

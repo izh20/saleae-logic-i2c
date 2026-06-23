@@ -1,7 +1,7 @@
 import {
   I2cTransaction, HidI2cEvent, HidI2cDescriptor, ReportField,
 } from './types';
-import { parseHexString } from './HidDescriptorFormatter';
+import { parseHexString, formatFieldValue } from './HidDescriptorFormatter';
 import { parseDescriptor } from './HidI2cDescriptorParser';
 import { parseDescriptor as parseReportDescriptor } from './HidDescriptorParser';
 import { analyzeReportItems, generateReportSummary } from './ReportAnalyzer';
@@ -149,11 +149,8 @@ function extractBits(data: number[], startBit: number, bitCount: number): number
   return result;
 }
 
-function formatFieldValue(name: string, value: number, bits: number): string {
-  if (bits === 1) return `${name}=${value === 1 ? '1(on)' : '0(off)'}`;
-  if (bits <= 8)  return `${name}=0x${value.toString(16).toUpperCase().padStart(2, '0')}(${value})`;
-  if (bits <= 16) return `${name}=0x${value.toString(16).toUpperCase().padStart(4, '0')}(${value})`;
-  return `${name}=0x${value.toString(16).toUpperCase()}(${value})`;
+function formatField(name: string, value: number, bits: number): string {
+  return `${name}=${formatFieldValue(value, bits)}`;
 }
 
 function getReportTypeName(rt: number): string {
@@ -258,7 +255,7 @@ function decodeReportPayload(
       const absBit = payloadStart * 8 + field.bitOffset + i * field.bitSize;
       const val = extractBits(data, absBit, field.bitSize);
       const itemName = count > 1 ? `${name}[${i}]` : name;
-      parts.push(formatFieldValue(itemName, val, field.bitSize));
+      parts.push(formatField(itemName, val, field.bitSize));
     }
   }
   return parts.length > 0 ? parts.join(', ') : null;

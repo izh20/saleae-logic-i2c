@@ -103,7 +103,7 @@ export function parseSingleFrame(
           dupCount++;
           key = `${fieldName}_${dupCount}`;
         }
-        frame.fields[key] = val;
+        frame.fields[key] = { value: val, bitSize: field.bitSize };
       }
     } else {
       const rawVal = extractBits(payload, field.bitOffset, field.bitSize);
@@ -118,7 +118,7 @@ export function parseSingleFrame(
         dupCount++;
         key = `${field.usage} ${dupCount}`;
       }
-      frame.fields[key] = val;
+      frame.fields[key] = { value: val, bitSize: field.bitSize };
     }
   }
 
