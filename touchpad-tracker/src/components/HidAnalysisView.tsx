@@ -7,6 +7,7 @@ import { parseDescriptor as parseReportDescriptor, formatCommentedHex } from '..
 import { analyzeReportItems, generateReportSummary } from '../hid/ReportAnalyzer';
 import {
   parseTransactions, analyzeSequence, generateSequenceMarkdown, AnalysisResult,
+  LiveHidAnalyzer, I2cTransaction, HidI2cEvent,
 } from '../hid/HidI2cSequenceAnalyzer';
 import { parseAllFrames } from '../hid/ReportBatchParser';
 import { parseSingleFrame } from '../hid/HidReportDataParser';
@@ -14,7 +15,7 @@ import { parseSingleFrame } from '../hid/HidReportDataParser';
 import { generateWara } from '../hid/WaraGenerator';
 import { WaraToDescriptorGenerator } from '../hid/WaraToDescriptorGenerator';
 
-type SubTab = 'powerOn' | 'deviceDesc' | 'reportDesc' | 'reportDataParser';
+type SubTab = 'powerOn' | 'deviceDesc' | 'reportDesc' | 'reportDataParser' | 'liveSequence';
 
 function wrapHtml(body: string): string {
   return `<style>
@@ -290,6 +291,18 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
     if (md) window.electronAPI.saveText?.(md, name + '-' + Date.now() + '.md');
   };
 
+  // Tab 5: Live Sequence
+  const [liveSeqHidDescHex, setLiveSeqHidDescHex] = useState('');
+  const [liveSeqReportDescHex, setLiveSeqReportDescHex] = useState('');
+  const [liveSeqAddr, setLiveSeqAddr] = useState('0x5D');
+  const [liveSeqReg, setLiveSeqReg] = useState('0x0001');
+  const [liveSeqStatus, setLiveSeqStatus] = useState('');
+  const [liveSeqListening, setLiveSeqListening] = useState(false);
+  const [liveSeqTick, setLiveSeqTick] = useState(0);
+  const liveSeqAnalyzerRef = useRef<LiveHidAnalyzer | null>(null);
+  const liveSeqUnsubscribeRef = useRef<(() => void) | null>(null);
+  const liveSeqStartTimeRef = useRef<number>(0);
+
   // === Handlers ===
 
   const handleAnalyzeSeq = useCallback(() => {
@@ -409,7 +422,7 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
     <div style={{ width:'100%', height:'100%', display:'flex', flexDirection:'column', background:'#1e1e1e', overflow:'hidden' }}>
       {/* Sub-tabs */}
       <div style={{ display:'flex', gap:0, padding:'0 8px', background:'#252526', borderBottom:'1px solid #3c3c3c', flexShrink:0 }}>
-        {(['powerOn','deviceDesc','reportDesc','reportDataParser'] as SubTab[]).map(key => (
+        {(['powerOn','deviceDesc','reportDesc','reportDataParser','liveSequence'] as SubTab[]).map(key => (
           <button key={key} onClick={() => setSubTab(key)}
             style={{
               padding:'8px 16px', border:'none', cursor:'pointer', fontSize:12,
@@ -418,7 +431,7 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
               borderBottom: subTab===key ? '2px solid #6a9955' : '2px solid transparent',
               fontWeight: subTab===key ? 600 : 400,
             }}>
-            {{powerOn:'Power-On Seq',deviceDesc:'Device Desc',reportDesc:'Report Desc',reportDataParser:'Report Data Parser'}[key]}
+            {{powerOn:'Power-On Seq',deviceDesc:'Device Desc',reportDesc:'Report Desc',reportDataParser:'Report Data',liveSequence:'Live Sequence'}[key]}
           </button>
         ))}
       </div>
@@ -504,6 +517,29 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
             setReportDataDescStatus={setReportDataDescStatus}
             reportDataInput={reportDataInput}
             setReportDataInput={setReportDataInput}
+          />
+        )}
+
+        {/* TAB 5: Live Sequence — incremental HID-over-I²C analyzer */}
+        {subTab === 'liveSequence' && (
+          <LiveSequenceTab
+            liveSeqHidDescHex={liveSeqHidDescHex}
+            setLiveSeqHidDescHex={setLiveSeqHidDescHex}
+            liveSeqReportDescHex={liveSeqReportDescHex}
+            setLiveSeqReportDescHex={setLiveSeqReportDescHex}
+            liveSeqAddr={liveSeqAddr}
+            setLiveSeqAddr={setLiveSeqAddr}
+            liveSeqReg={liveSeqReg}
+            setLiveSeqReg={setLiveSeqReg}
+            liveSeqStatus={liveSeqStatus}
+            setLiveSeqStatus={setLiveSeqStatus}
+            liveSeqListening={liveSeqListening}
+            setLiveSeqListening={setLiveSeqListening}
+            liveSeqTick={liveSeqTick}
+            setLiveSeqTick={setLiveSeqTick}
+            liveSeqAnalyzerRef={liveSeqAnalyzerRef}
+            liveSeqUnsubscribeRef={liveSeqUnsubscribeRef}
+            liveSeqStartTimeRef={liveSeqStartTimeRef}
           />
         )}
       </div>
@@ -695,6 +731,227 @@ const ReportDataParserTab: React.FC<{
           ? <LiveFrameTable tick={liveTick} />
           : <div style={{ height:'100%', overflow:'auto' }} dangerouslySetInnerHTML={{ __html: reportDataHtml }} />}
       </ResizableSplit>
+    </div>
+  );
+};
+
+// ── Tab 5: Live Sequence — incremental HID-over-I²C analyzer ──
+
+interface LiveSequenceTabProps {
+  liveSeqHidDescHex: string;
+  setLiveSeqHidDescHex: (v: string) => void;
+  liveSeqReportDescHex: string;
+  setLiveSeqReportDescHex: (v: string) => void;
+  liveSeqAddr: string;
+  setLiveSeqAddr: (v: string) => void;
+  liveSeqReg: string;
+  setLiveSeqReg: (v: string) => void;
+  liveSeqStatus: string;
+  setLiveSeqStatus: (v: string) => void;
+  liveSeqListening: boolean;
+  setLiveSeqListening: (v: boolean) => void;
+  liveSeqTick: number;
+  setLiveSeqTick: React.Dispatch<React.SetStateAction<number>>;
+  liveSeqAnalyzerRef: React.MutableRefObject<LiveHidAnalyzer | null>;
+  liveSeqUnsubscribeRef: React.MutableRefObject<(() => void) | null>;
+  liveSeqStartTimeRef: React.MutableRefObject<number>;
+}
+
+const LiveSequenceTab: React.FC<LiveSequenceTabProps> = ({
+  liveSeqHidDescHex, setLiveSeqHidDescHex,
+  liveSeqReportDescHex, setLiveSeqReportDescHex,
+  liveSeqAddr, setLiveSeqAddr,
+  liveSeqReg, setLiveSeqReg,
+  liveSeqStatus, setLiveSeqStatus,
+  liveSeqListening, setLiveSeqListening,
+  liveSeqTick, setLiveSeqTick,
+  liveSeqAnalyzerRef, liveSeqUnsubscribeRef, liveSeqStartTimeRef,
+}) => {
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+
+  const handleLoadHidDesc = useCallback(() => {
+    try {
+      const bytes = parseHexString(liveSeqHidDescHex);
+      if (bytes.length < 30) {
+        setLiveSeqStatus('Need 30 bytes of HID descriptor');
+        return;
+      }
+      const desc = parseDescriptor(bytes);
+      if (!desc) {
+        setLiveSeqStatus('Parse failed');
+        return;
+      }
+      setLiveSeqStatus(`Loaded VID=0x${desc.vendorId.toString(16).toUpperCase()}, PID=0x${desc.productId.toString(16).toUpperCase()}, MaxInput=${desc.maxInputLength}B`);
+    } catch {
+      setLiveSeqStatus('Parse failed');
+    }
+  }, [liveSeqHidDescHex]);
+
+  const handleLoadReportDesc = useCallback(() => {
+    try {
+      const bytes = parseHexString(liveSeqReportDescHex);
+      if (bytes.length === 0) {
+        setLiveSeqStatus('Need valid hex bytes');
+        return;
+      }
+      const items = parseReportDescriptor(bytes);
+      const fields = analyzeReportItems(items);
+      setLiveSeqStatus(`Loaded (${bytes.length}B, ${fields.length} fields)`);
+    } catch {
+      setLiveSeqStatus('Parse failed');
+    }
+  }, [liveSeqReportDescHex]);
+
+  const handleStartListening = useCallback(() => {
+    let addr: number;
+    let reg: number;
+    try {
+      const hidBytes = parseHexString(liveSeqHidDescHex);
+      const reportBytes = parseHexString(liveSeqReportDescHex);
+      addr = parseInt(liveSeqAddr, 16);
+      reg = parseInt(liveSeqReg, 16);
+      if (hidBytes.length < 30) { setLiveSeqStatus('Load HID descriptor first'); return; }
+      if (reportBytes.length === 0) { setLiveSeqStatus('Load Report descriptor first'); return; }
+      if (isNaN(addr) || isNaN(reg)) { setLiveSeqStatus('Bad addr/reg'); return; }
+      const hidDesc = parseDescriptor(hidBytes);
+      if (!hidDesc) { setLiveSeqStatus('HID descriptor parse failed'); return; }
+      const items = parseReportDescriptor(reportBytes);
+      const fields = analyzeReportItems(items);
+
+      const analyzer = new LiveHidAnalyzer(addr, reg, 200);
+      analyzer.loadDescriptor(hidDesc, fields);
+      liveSeqAnalyzerRef.current = analyzer;
+      liveSeqStartTimeRef.current = Date.now();
+
+      const unsub = window.electronAPI.onI2cRawFrame?.((rawFrame) => {
+        if (rawFrame.i2cAddress !== addr) return;
+        const txn: I2cTransaction = {
+          lineNumber: 0,
+          timestamp: rawFrame.timestamp / 1000,
+          timeMs: rawFrame.timestamp - liveSeqStartTimeRef.current,
+          address: rawFrame.i2cAddress,
+          isRead: rawFrame.isRead,
+          data: rawFrame.rawBytes,
+          rawLine: undefined,
+        };
+        analyzer.pushTransaction(txn);
+        setLiveSeqTick(t => t + 1);
+        setLiveSeqStatus(`Listening: ${analyzer.getEventCount()} events captured`);
+      });
+      liveSeqUnsubscribeRef.current = unsub || null;
+      setLiveSeqListening(true);
+      setLiveSeqStatus(`Listening: 0 events captured`);
+    } catch (e) {
+      setLiveSeqStatus(`Start failed: ${e}`);
+    }
+  }, [liveSeqHidDescHex, liveSeqReportDescHex, liveSeqAddr, liveSeqReg]);
+
+  const handleStopListening = useCallback(() => {
+    setLiveSeqListening(false);
+    if (liveSeqUnsubscribeRef.current) { liveSeqUnsubscribeRef.current(); liveSeqUnsubscribeRef.current = null; }
+    const analyzer = liveSeqAnalyzerRef.current;
+    if (analyzer) {
+      setLiveSeqStatus(`Stopped: ${analyzer.getEventCount()} events captured`);
+    }
+  }, []);
+
+  const handleClear = useCallback(() => {
+    if (liveSeqUnsubscribeRef.current) { liveSeqUnsubscribeRef.current(); liveSeqUnsubscribeRef.current = null; }
+    liveSeqAnalyzerRef.current = null;
+    setLiveSeqListening(false);
+    setLiveSeqStatus('Cleared');
+    setLiveSeqTick(t => t + 1);
+  }, []);
+
+  // Auto-scroll to bottom while listening
+  useEffect(() => {
+    if (liveSeqListening && tableScrollRef.current) {
+      tableScrollRef.current.scrollTop = tableScrollRef.current.scrollHeight;
+    }
+  }, [liveSeqTick, liveSeqListening]);
+
+  const analyzer = liveSeqAnalyzerRef.current;
+  const allEvents: HidI2cEvent[] = analyzer ? analyzer.getEvents() : [];
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Descriptor input panel */}
+      <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: 6, background: '#252526', borderBottom: '1px solid #3c3c3c', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <label style={{ fontSize: 12, color: '#d4d4d4' }}>HID Device Desc (30B):</label>
+          <button onClick={handleLoadHidDesc} style={{ padding: '4px 10px', borderRadius: 4, border: 'none', background: '#3c3c3c', color: '#d4d4d4', cursor: 'pointer', fontSize: 12 }}>Load</button>
+          <label style={{ fontSize: 12, color: '#d4d4d4' }}>Addr:</label>
+          <input value={liveSeqAddr} onChange={e => setLiveSeqAddr(e.target.value)} style={{ width: 60, background: '#3c3c3c', color: '#d4d4d4', border: 'none', padding: '2px 4px', borderRadius: 2, fontSize: 12 }} />
+          <label style={{ fontSize: 12, color: '#d4d4d4' }}>Desc Reg:</label>
+          <input value={liveSeqReg} onChange={e => setLiveSeqReg(e.target.value)} style={{ width: 60, background: '#3c3c3c', color: '#d4d4d4', border: 'none', padding: '2px 4px', borderRadius: 2, fontSize: 12 }} />
+        </div>
+        <textarea
+          value={liveSeqHidDescHex}
+          onChange={e => setLiveSeqHidDescHex(e.target.value)}
+          placeholder="Paste 30 bytes of HID Device Descriptor (e.g. 1E 00 00 01 27 C6 ...)"
+          style={{ width: '100%', height: 36, background: '#252526', color: '#d4d4d4', border: '1px solid #3c3c3c', padding: 4, fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }}
+        />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <label style={{ fontSize: 12, color: '#d4d4d4' }}>HID Report Desc:</label>
+          <button onClick={handleLoadReportDesc} style={{ padding: '4px 10px', borderRadius: 4, border: 'none', background: '#3c3c3c', color: '#d4d4d4', cursor: 'pointer', fontSize: 12 }}>Load</button>
+        </div>
+        <textarea
+          value={liveSeqReportDescHex}
+          onChange={e => setLiveSeqReportDescHex(e.target.value)}
+          placeholder="Paste HID Report Descriptor hex (e.g. 05 01 09 02 A1 01 ...)"
+          style={{ width: '100%', height: 50, background: '#252526', color: '#d4d4d4', border: '1px solid #3c3c3c', padding: 4, fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }}
+        />
+      </div>
+
+      {/* Listen controls */}
+      <div style={{ padding: '8px', display: 'flex', gap: 8, alignItems: 'center', background: '#1e1e1e', borderBottom: '1px solid #3c3c3c', flexShrink: 0 }}>
+        <button
+          onClick={liveSeqListening ? handleStopListening : handleStartListening}
+          style={{ padding: '4px 14px', borderRadius: 4, border: 'none', background: liveSeqListening ? '#f14c4c' : '#6a9955', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
+        >
+          {liveSeqListening ? 'Stop Listening' : 'Start Listening'}
+        </button>
+        <button onClick={handleClear} style={{ padding: '4px 12px', borderRadius: 4, border: 'none', background: '#3c3c3c', color: '#d4d4d4', cursor: 'pointer', fontSize: 12 }}>Clear</button>
+        <span style={{ fontSize: 11, color: '#6a9955' }}>{liveSeqStatus}</span>
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: liveSeqListening ? '#6a9955' : '#858585' }}>
+          {liveSeqListening ? '● LIVE' : '○ idle'}
+        </span>
+      </div>
+
+      {/* Events table */}
+      <div ref={tableScrollRef} style={{ flex: 1, overflow: 'auto', background: '#1e1e1e' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'monospace', fontSize: 11 }}>
+          <thead style={{ position: 'sticky', top: 0, background: '#252526', zIndex: 1 }}>
+            <tr>
+              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955', width: 40 }}>#</th>
+              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955', width: 90 }}>Time (s)</th>
+              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955', width: 110 }}>Direction</th>
+              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955', width: 170 }}>Event Type</th>
+              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955', width: 60 }}>ReportID</th>
+              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955' }}>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            {allEvents.map((evt) => (
+              <tr key={evt.order} style={{ background: evt.order % 2 === 0 ? '#1e1e1e' : '#252526' }}>
+                <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: '#858585' }}>{evt.order}</td>
+                <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: '#d4d4d4' }}>{evt.timestamp.toFixed(3)}</td>
+                <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: evt.direction.includes('←') ? '#ce9178' : '#569cd6' }}>{evt.direction}</td>
+                <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: '#d4d4d4', fontWeight: 600 }}>{evt.eventType}</td>
+                <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: '#ce9178' }}>{evt.reportId || '-'}</td>
+                <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: '#d4d4d4' }} dangerouslySetInnerHTML={{ __html: evt.description }} />
+              </tr>
+            ))}
+            {allEvents.length === 0 && (
+              <tr>
+                <td colSpan={6} style={{ padding: 20, textAlign: 'center', color: '#858585', fontStyle: 'italic' }}>
+                  {liveSeqListening ? 'Waiting for I²C frames...' : 'Load descriptors and click Start Listening to begin.'}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };
