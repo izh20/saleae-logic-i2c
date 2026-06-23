@@ -64,6 +64,50 @@ const REPORT_DATA_SAMPLE =
 01 01 50 10 00 00 00 00 00
 01 00 00 00 00 00 00 00 00`;
 
+// ── Persistence helpers (renderer-side localStorage) ──
+// Each HID Analysis input field is auto-saved to localStorage so the user
+// can resume work after closing/reopening the app without re-pasting.
+// localStorage is keyed by a stable 'hid-analysis:<tab>:<field>' namespace.
+
+const STORAGE_PREFIX = 'hid-analysis:';
+
+function loadStoredString(key: string, defaultValue: string): string {
+  try {
+    const v = localStorage.getItem(STORAGE_PREFIX + key);
+    return v === null ? defaultValue : v;
+  } catch {
+    return defaultValue;
+  }
+}
+
+function loadStoredBool(key: string, defaultValue: boolean): boolean {
+  try {
+    const v = localStorage.getItem(STORAGE_PREFIX + key);
+    if (v === null) return defaultValue;
+    return v === 'true' || v === '1';
+  } catch {
+    return defaultValue;
+  }
+}
+
+function saveStoredString(key: string, value: string): void {
+  try {
+    localStorage.setItem(STORAGE_PREFIX + key, value);
+  } catch {
+    /* quota exceeded or storage disabled — silently ignore */
+  }
+}
+
+function saveStoredBool(key: string, value: boolean): void {
+  saveStoredString(key, value ? 'true' : 'false');
+}
+
+function clearStoredKeys(keys: string[]): void {
+  try {
+    for (const k of keys) localStorage.removeItem(STORAGE_PREFIX + k);
+  } catch { /* noop */ }
+}
+
 // Simple resizable split pane
 const ResizableSplit: React.FC<{
   direction: 'horizontal' | 'vertical';
@@ -238,18 +282,18 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
   const [subTab, setSubTab] = useState<SubTab>('powerOn');
 
   // Tab 1: Power-On Sequence
-  const [seqInput, setSeqInput] = useState('');
-  const [seqAddr, setSeqAddr] = useState(i2cAddress.toString(16));
-  const [seqReg, setSeqReg] = useState('0x01');
+  const [seqInput, setSeqInput] = useState(() => loadStoredString('tab1:seqInput', ''));
+  const [seqAddr, setSeqAddr] = useState(() => loadStoredString('tab1:seqAddr', i2cAddress.toString(16)));
+  const [seqReg, setSeqReg] = useState(() => loadStoredString('tab1:seqReg', '0x01'));
   const [seqHtml, setSeqHtml] = useState('');
   const [seqResult, setSeqResult] = useState<AnalysisResult | null>(null);
 
   // Tab 2: Device Descriptor
-  const [descHex, setDescHex] = useState('');
+  const [descHex, setDescHex] = useState(() => loadStoredString('tab2:descHex', ''));
   const [descHtml, setDescHtml] = useState('');
 
   // Tab 3: Report Descriptor
-  const [reportDescHex, setReportDescHex] = useState('');
+  const [reportDescHex, setReportDescHex] = useState(() => loadStoredString('tab3:reportDescHex', ''));
   const [reportDescHtml, setReportDescHtml] = useState('');
   const [reportFields, setReportFields] = useState<ReportField[]>([]);
   const [liveRawInput, setLiveRawInput] = useState('');
@@ -264,17 +308,11 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
   useEffect(() => { commentModeRef.current = commentMode; }, [commentMode]);
 
   // Tab 4: Report Data Parser
-  const [reportDataInput, setReportDataInput] = useState('');
-  const [reportDataDescHex, setReportDataDescHex] = useState(() => {
-    try { return localStorage.getItem('hidReportDescHex') || ''; } catch { return ''; }
-  });
-  // Persist to localStorage
-  useEffect(() => {
-    try { localStorage.setItem('hidReportDescHex', reportDataDescHex); } catch { /* noop */ }
-  }, [reportDataDescHex]);
+  const [reportDataInput, setReportDataInput] = useState(() => loadStoredString('tab4:reportDataInput', ''));
+  const [reportDataDescHex, setReportDataDescHex] = useState(() => loadStoredString('tab4:reportDataDescHex', ''));
   const [reportDataHtml, setReportDataHtml] = useState('');
-  const [hasLenPrefix, setHasLenPrefix] = useState(false);
-  const [reportDataAddrFilter, setReportDataAddrFilter] = useState('');
+  const [hasLenPrefix, setHasLenPrefix] = useState(() => loadStoredBool('tab4:hasLenPrefix', false));
+  const [reportDataAddrFilter, setReportDataAddrFilter] = useState(() => loadStoredString('tab4:reportDataAddrFilter', ''));
   const [reportDataDescStatus, setReportDataDescStatus] = useState('');
 
   // Per-tab Save MD refs
@@ -292,16 +330,33 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
   };
 
   // Tab 5: Live Sequence
-  const [liveSeqHidDescHex, setLiveSeqHidDescHex] = useState('');
-  const [liveSeqReportDescHex, setLiveSeqReportDescHex] = useState('');
-  const [liveSeqAddr, setLiveSeqAddr] = useState('0x5D');
-  const [liveSeqReg, setLiveSeqReg] = useState('0x0001');
+  const [liveSeqHidDescHex, setLiveSeqHidDescHex] = useState(() => loadStoredString('tab5:liveSeqHidDescHex', ''));
+  const [liveSeqReportDescHex, setLiveSeqReportDescHex] = useState(() => loadStoredString('tab5:liveSeqReportDescHex', ''));
+  const [liveSeqAddr, setLiveSeqAddr] = useState(() => loadStoredString('tab5:liveSeqAddr', '0x5D'));
+  const [liveSeqReg, setLiveSeqReg] = useState(() => loadStoredString('tab5:liveSeqReg', '0x0001'));
   const [liveSeqStatus, setLiveSeqStatus] = useState('');
   const [liveSeqListening, setLiveSeqListening] = useState(false);
   const [liveSeqTick, setLiveSeqTick] = useState(0);
   const liveSeqAnalyzerRef = useRef<LiveHidAnalyzer | null>(null);
   const liveSeqUnsubscribeRef = useRef<(() => void) | null>(null);
   const liveSeqStartTimeRef = useRef<number>(0);
+
+  // ── Persistence: auto-save each input field to localStorage on change.
+  // localStorage writes are synchronous and cheap (sub-millisecond) so we
+  // do them on every state change without debouncing.
+  useEffect(() => { saveStoredString('tab1:seqInput', seqInput); }, [seqInput]);
+  useEffect(() => { saveStoredString('tab1:seqAddr', seqAddr); }, [seqAddr]);
+  useEffect(() => { saveStoredString('tab1:seqReg', seqReg); }, [seqReg]);
+  useEffect(() => { saveStoredString('tab2:descHex', descHex); }, [descHex]);
+  useEffect(() => { saveStoredString('tab3:reportDescHex', reportDescHex); }, [reportDescHex]);
+  useEffect(() => { saveStoredString('tab4:reportDataInput', reportDataInput); }, [reportDataInput]);
+  useEffect(() => { saveStoredString('tab4:reportDataDescHex', reportDataDescHex); }, [reportDataDescHex]);
+  useEffect(() => { saveStoredBool('tab4:hasLenPrefix', hasLenPrefix); }, [hasLenPrefix]);
+  useEffect(() => { saveStoredString('tab4:reportDataAddrFilter', reportDataAddrFilter); }, [reportDataAddrFilter]);
+  useEffect(() => { saveStoredString('tab5:liveSeqHidDescHex', liveSeqHidDescHex); }, [liveSeqHidDescHex]);
+  useEffect(() => { saveStoredString('tab5:liveSeqReportDescHex', liveSeqReportDescHex); }, [liveSeqReportDescHex]);
+  useEffect(() => { saveStoredString('tab5:liveSeqAddr', liveSeqAddr); }, [liveSeqAddr]);
+  useEffect(() => { saveStoredString('tab5:liveSeqReg', liveSeqReg); }, [liveSeqReg]);
 
   // === Handlers ===
 
@@ -447,6 +502,7 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
               <button onClick={()=>{setSeqInput(SEQ_SAMPLE);setSeqHtml('');setSeqResult(null);}} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Load Sample</button>
               <button onClick={()=>{setSeqInput('');setSeqHtml('');setSeqResult(null);}} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Clear</button>
               <button onClick={()=>handleSaveMd(1)} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Save MD</button>
+              <button onClick={()=>{ clearStoredKeys(['tab1:seqInput','tab1:seqAddr','tab1:seqReg']); setSeqInput(''); setSeqAddr(i2cAddress.toString(16)); setSeqReg('0x01'); setSeqHtml(''); setSeqResult(null); }} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }} title="Reset Tab 1 to defaults (also clears localStorage)">Reset</button>
             </div>
             <ResizableSplit direction="horizontal" defaultSize={400}>
               <textarea value={seqInput} onChange={e=>setSeqInput(e.target.value)} placeholder="Paste Saleae CSV export or I2C log..."
@@ -464,6 +520,7 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
               <button onClick={()=>setDescHex(SAMPLE_DESC)} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Load Sample</button>
               <button onClick={()=>{setDescHex('');setDescHtml('');}} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Clear</button>
               <button onClick={()=>handleSaveMd(2)} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Save MD</button>
+              <button onClick={()=>{ clearStoredKeys(['tab2:descHex']); setDescHex(''); setDescHtml(''); }} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }} title="Reset Tab 2 to defaults (also clears localStorage)">Reset</button>
             </div>
             <ResizableSplit direction="horizontal" defaultSize={400}>
               <textarea value={descHex} onChange={e=>setDescHex(e.target.value)} placeholder="Paste 30 hex bytes..."
@@ -483,6 +540,7 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
               <button onClick={handleDescToWara} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Desc → .wara</button>
               <button onClick={handleWaraToDesc} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>.wara → Desc</button>
               <button onClick={()=>{setReportDescHex('');setReportDescHtml('');setReportFields([]);setWaraText('');setShowWaraEditor(false);}} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Clear All</button>
+              <button onClick={()=>{ clearStoredKeys(['tab3:reportDescHex']); setReportDescHex(''); setReportDescHtml(''); setReportFields([]); setWaraText(''); setShowWaraEditor(false); }} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }} title="Reset Tab 3 to defaults (also clears localStorage)">Reset</button>
               <button onClick={()=>handleSaveMd(3)} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Save MD</button>
               <span style={{ fontSize:11, color:'#808080', marginLeft:'auto' }}>{reportFields.length>0 ? `${reportFields.length} fields` : ''}</span>
             </div>
@@ -724,6 +782,7 @@ const ReportDataParserTab: React.FC<{
         <button onClick={handleParseData} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#6a9955', color:'#fff', cursor:'pointer', fontSize:12 }}>Parse Report Data</button>
         <button onClick={()=>{if(isListening){liveRawInputRef.current='';liveFramesRef.current=[];setLiveTick(function(t){return t+1})}else{setReportDataInput('');setReportDataHtml('');}}} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Clear</button>
         <button onClick={handleSaveMd4} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }}>Save MD</button>
+        <button onClick={()=>{ clearStoredKeys(['tab4:reportDataDescHex','tab4:reportDataInput','tab4:hasLenPrefix','tab4:reportDataAddrFilter']); setReportDataDescHex(''); setReportDataInput(''); setHasLenPrefix(false); setReportDataAddrFilter(''); setReportDataHtml(''); setReportDataDescStatus(''); }} style={{ padding:'4px 12px', borderRadius:4, border:'none', background:'#3c3c3c', color:'#d4d4d4', cursor:'pointer', fontSize:12 }} title="Reset Tab 4 to defaults (also clears localStorage)">Reset</button>
       </div>
       <ResizableSplit direction="horizontal" defaultSize={400}>
         <RawDataView isListening={isListening} reportDataInput={reportDataInput} setReportDataInput={setReportDataInput} tick={liveTick} />
@@ -967,6 +1026,7 @@ const LiveSequenceTab: React.FC<LiveSequenceTabProps> = ({
         <button onClick={handleClear} style={{ padding: '4px 12px', borderRadius: 4, border: 'none', background: '#3c3c3c', color: '#d4d4d4', cursor: 'pointer', fontSize: 12 }}>Clear</button>
         <button onClick={handleSaveMd} style={{ padding: '4px 12px', borderRadius: 4, border: 'none', background: '#3c3c3c', color: '#d4d4d4', cursor: 'pointer', fontSize: 12 }}>Save MD</button>
         <button onClick={handleSaveJson} style={{ padding: '4px 12px', borderRadius: 4, border: 'none', background: '#3c3c3c', color: '#d4d4d4', cursor: 'pointer', fontSize: 12 }}>Save JSON</button>
+        <button onClick={()=>{ clearStoredKeys(['tab5:liveSeqHidDescHex','tab5:liveSeqReportDescHex','tab5:liveSeqAddr','tab5:liveSeqReg']); setLiveSeqHidDescHex(''); setLiveSeqReportDescHex(''); setLiveSeqAddr('0x5D'); setLiveSeqReg('0x0001'); }} style={{ padding: '4px 12px', borderRadius: 4, border: 'none', background: '#3c3c3c', color: '#d4d4d4', cursor: 'pointer', fontSize: 12 }} title="Reset Tab 5 to defaults (also clears localStorage)">Reset</button>
         <span style={{ fontSize: 11, color: '#6a9955' }}>{liveSeqStatus}</span>
         <span style={{ marginLeft: 'auto', fontSize: 11, color: liveSeqListening ? '#6a9955' : '#858585' }}>
           {liveSeqListening ? '● LIVE' : '○ idle'}
