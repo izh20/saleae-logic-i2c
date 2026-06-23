@@ -963,19 +963,12 @@ const LiveSequenceTab: React.FC<LiveSequenceTabProps> = ({
     setLiveSeqStatus(`Saved JSON: ${events.length} events`);
   }, [liveSeqAddr, liveSeqReg]);
 
-  // Auto-scroll state: when true, follow the tail (auto-scroll to bottom
-  // on each new event). When false, the user's scroll position is preserved
-  // so they can examine older events. "Jump to latest" button toggles this
-  // back on. Defaults to true (live-mode convention: show what's new).
-  const [autoScroll, setAutoScroll] = useState(true);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewH, setViewH] = useState(0);
   const liveSeqScrollRef = useRef<HTMLDivElement>(null);
   const liveSeqInnerRef = useRef<HTMLDivElement>(null);
 
-  // Watch for user scrolling away from the bottom — when they do, disable
-  // auto-scroll so the view doesn't jump. When they click "Jump to latest"
-  // or scroll back to the bottom, re-enable.
+  // ResizeObserver to keep viewH in sync (needed for virtual scroll).
   useEffect(() => {
     const el = liveSeqScrollRef.current;
     if (!el) return;
@@ -985,22 +978,19 @@ const LiveSequenceTab: React.FC<LiveSequenceTabProps> = ({
     return () => ro.disconnect();
   }, []);
 
+  // Always auto-scroll to the bottom on each new tick so the user sees
+  // the latest events in real time. Scroll up manually to inspect history;
+  // new data will keep jumping to the tail — this is the default mode.
   useEffect(() => {
-    if (!autoScroll) return;
     const el = liveSeqScrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [liveSeqTick, autoScroll]);
+  }, [liveSeqTick]);
 
   const handleLiveSeqScroll = useCallback(() => {
     const el = liveSeqScrollRef.current;
     if (!el) return;
-    const newScrollTop = el.scrollTop;
-    setScrollTop(newScrollTop);
-    // If the user is within 50px of the bottom, treat as "at the tail" —
-    // keep autoScroll on. Otherwise they've scrolled up, disable.
-    const atBottom = el.scrollHeight - newScrollTop - el.clientHeight < 50;
-    if (!atBottom && autoScroll) setAutoScroll(false);
-  }, [autoScroll]);
+    setScrollTop(el.scrollTop);
+  }, []);
 
   const analyzer = liveSeqAnalyzerRef.current;
   const allEvents: HidI2cEvent[] = analyzer ? analyzer.getEvents() : [];
@@ -1072,14 +1062,6 @@ const LiveSequenceTab: React.FC<LiveSequenceTabProps> = ({
           <span style={{ marginLeft: 12 }}>
             {totalRows > 0 ? `Showing rows ${startIdx + 1}-${endIdx}` : '(empty)'}
           </span>
-          {!autoScroll && totalRows > 0 && (
-            <button
-              onClick={() => { setAutoScroll(true); const el = liveSeqScrollRef.current; if (el) el.scrollTop = el.scrollHeight; }}
-              style={{ marginLeft: 12, padding: '2px 8px', fontSize: 11, borderRadius: 3, border: 'none', background: '#6a9955', color: '#fff', cursor: 'pointer' }}
-            >
-              ⤓ Jump to latest
-            </button>
-          )}
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'monospace', fontSize: 11, tableLayout: 'fixed' }}>
           <colgroup>
