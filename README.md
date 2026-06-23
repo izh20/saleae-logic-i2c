@@ -194,7 +194,9 @@ cp -r i2c_hla ~/Library/Application\ Support/SaleaeLogic/Extensions/
 - 实时模式：**Start Listening** 订阅 `i2c-raw-frame` IPC，每条 I²C TX 进入 `LiveHidAnalyzer.pushTransaction` 增量分析
 - 复用 `analyzeSequence` 的 9 种 eventType：Read HID Descriptor / HID Descriptor Response / Read Report Descriptor / Report Descriptor Response / Send Command（opcode 全解码）/ Get Report Response（带字段级 payload）/ Output Report / Set Report (Data) / Input Report
 - 事件表格按 Power-On Seq 风格（# / Time / Direction / Event Type / ReportID / Description）实时刷新
-- 表格上限 200 条 FIFO 截断
+- **无 events 上限**——`LiveHidAnalyzer.allEvents` 持续 append；长跑可累积到数十万条（每条 ~150B，1 小时 @ 100Hz ≈ 50MB），用户通过 **Save MD / Save JSON** 把当前累积导出后 **Clear** 清空来控内存
+- **Save MD** — 把 events 列表导出为 Power-On Seq 同款 Markdown 表格（复用 `generateSequenceMarkdown`）
+- **Save JSON** — 导出为机器可读 JSON（含 `version` / `recordedAt` / `deviceAddress` / `hidDescRegister` / `hidDescriptor` / `eventCount` / `events[]`），便于二次分析
 - **架构核心**：`LiveHidAnalyzer` 类（[HidI2cSequenceAnalyzer.ts](touchpad-tracker/src/hid/HidI2cSequenceAnalyzer.ts)）持有 hidDescriptor / reportFields / pendingRead / order / events 状态，每次 push 一条 I²C 事务返回 0+ 新事件。`processSingleTransaction` 是 batch 与 live 共享的公共函数——Live Sequence 与 Power-On Seq **逻辑 100% 等价**（parity 验证：840 events 全等）。
 - 区别于 Power-On Seq：用户**手动**输入两份 descriptor，不做自动探测；Get Report Response 在 live 模式下用 `pendingRead='get_report_*'` 弱配对（无法预知 host 下一个 GET_REPORT 的 Report ID），orphan response 按通用 Input Report 降级
 

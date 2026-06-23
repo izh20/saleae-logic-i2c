@@ -705,6 +705,10 @@ function generateDescriptorMarkdown(desc: HidI2cDescriptor): string {
  *      the i2c-raw-frame IPC channel. Returns the new events emitted
  *      by this transaction.
  *   4. reset() — call on Stop to clear all state before the next session.
+ *
+ * No event cap: callers can hold as many events as memory allows. Long
+ * sessions can grow the array into the hundreds of thousands; the UI is
+ * expected to virtualize the table or save-then-clear as needed.
  */
 export class LiveHidAnalyzer {
   private deviceAddress: number;
@@ -715,12 +719,10 @@ export class LiveHidAnalyzer {
   private pendingRead: string | null = null;
   private order = 0;
   private allEvents: HidI2cEvent[] = [];
-  private readonly maxEvents: number;
 
-  constructor(deviceAddress: number, hidDescRegister: number, maxEvents = 200) {
+  constructor(deviceAddress: number, hidDescRegister: number) {
     this.deviceAddress = deviceAddress;
     this.hidDescRegister = hidDescRegister;
-    this.maxEvents = maxEvents;
   }
 
   /** Reset all state. Called by Stop button. */
@@ -767,10 +769,6 @@ export class LiveHidAnalyzer {
         };
         newEvents.push(evt);
         self.allEvents.push(evt);
-        if (self.allEvents.length > self.maxEvents) {
-          // FIFO drop oldest, but keep order monotonic.
-          self.allEvents.shift();
-        }
       },
       setHidDescriptor: (d) => { self.hidDescriptor = d; },
       setReportDescriptorBytes: (b) => { self.reportDescriptorBytes = b; },
@@ -803,4 +801,25 @@ export class LiveHidAnalyzer {
   getEventCount(): number {
     return this.allEvents.length;
   }
+}
+
+/**
+ * Build an AnalysisResult from a list of HidI2cEvents so the existing
+ * generateSequenceMarkdown can render them as Markdown. Used by the
+ * Live Sequence subTab's "Save MD" button.
+ */
+export function liveSequenceEventsToResult(
+  events: HidI2cEvent[],
+  hidDescriptor: HidI2cDescriptor | null,
+  reportDescriptorBytes: number[],
+  reportFields: ReportField[],
+): AnalysisResult {
+  return {
+    events: [...events],
+    hidDescriptor,
+    reportDescriptorBytes: [...reportDescriptorBytes],
+    reportFields,
+    otherReadCount: 0,
+    otherWriteCount: 0,
+  };
 }

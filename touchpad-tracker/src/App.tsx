@@ -651,7 +651,7 @@ const App: React.FC = () => {
                       点 <span style={{ color: '#6a9955' }}>Start Listening</span> 订阅 i2c-raw-frame IPC。
                       实时显示 9 种 eventType：Read HID Descriptor / Send Command（opcode 全解码）
                       / Get Report Response（字段级 payload）/ Input Report / Output Report 等。
-                      表格上限 200 条 FIFO 截断。
+                      表格无 events 上限（持续追加）；用 <span style={{ color: '#6a9955' }}>Save MD</span> / <span style={{ color: '#6a9955' }}>Save JSON</span> 导出当前累积后 <span style={{ color: '#6a9955' }}>Clear</span> 清空。
                     </td>
                   </tr>
                 </tbody>

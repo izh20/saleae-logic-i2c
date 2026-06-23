@@ -7,7 +7,7 @@ import { parseDescriptor as parseReportDescriptor, formatCommentedHex } from '..
 import { analyzeReportItems, generateReportSummary } from '../hid/ReportAnalyzer';
 import {
   parseTransactions, analyzeSequence, generateSequenceMarkdown, AnalysisResult,
-  LiveHidAnalyzer, I2cTransaction, HidI2cEvent,
+  LiveHidAnalyzer, I2cTransaction, HidI2cEvent, liveSequenceEventsToResult,
 } from '../hid/HidI2cSequenceAnalyzer';
 import { parseAllFrames } from '../hid/ReportBatchParser';
 import { parseSingleFrame } from '../hid/HidReportDataParser';
@@ -818,7 +818,7 @@ const LiveSequenceTab: React.FC<LiveSequenceTabProps> = ({
       const items = parseReportDescriptor(reportBytes);
       const fields = analyzeReportItems(items);
 
-      const analyzer = new LiveHidAnalyzer(addr, reg, 200);
+      const analyzer = new LiveHidAnalyzer(addr, reg);
       analyzer.loadDescriptor(hidDesc, fields);
       liveSeqAnalyzerRef.current = analyzer;
       liveSeqStartTimeRef.current = Date.now();
@@ -862,6 +862,59 @@ const LiveSequenceTab: React.FC<LiveSequenceTabProps> = ({
     setLiveSeqStatus('Cleared');
     setLiveSeqTick(t => t + 1);
   }, []);
+
+  const handleSaveMd = useCallback(() => {
+    const analyzer = liveSeqAnalyzerRef.current;
+    if (!analyzer || analyzer.getEventCount() === 0) {
+      setLiveSeqStatus('Nothing to save — no events captured');
+      return;
+    }
+    const events = analyzer.getEvents();
+    const hidDesc = analyzer.getHidDescriptor();
+    // We don't have direct access to reportDescriptorBytes from the analyzer,
+    // but generateSequenceMarkdown doesn't strictly need it (it uses
+    // reportFields for field-level decoding in the summary).
+    const result = liveSequenceEventsToResult(
+      events,
+      hidDesc,
+      [],  // reportDescriptorBytes not retained by analyzer
+      [],  // reportFields not retained by analyzer either
+    );
+    const md = generateSequenceMarkdown(result);
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    window.electronAPI.saveText?.(md, `live-sequence-${ts}.md`);
+    setLiveSeqStatus(`Saved MD: ${events.length} events`);
+  }, []);
+
+  const handleSaveJson = useCallback(() => {
+    const analyzer = liveSeqAnalyzerRef.current;
+    if (!analyzer || analyzer.getEventCount() === 0) {
+      setLiveSeqStatus('Nothing to save — no events captured');
+      return;
+    }
+    const events = analyzer.getEvents();
+    const payload = {
+      version: 1,
+      recordedAt: new Date().toISOString(),
+      deviceAddress: parseInt(liveSeqAddr, 16),
+      hidDescRegister: parseInt(liveSeqReg, 16),
+      hidDescriptor: analyzer.getHidDescriptor(),
+      eventCount: events.length,
+      events: events.map(e => ({
+        order: e.order,
+        timestamp: e.timestamp,
+        timeMs: e.timeMs,
+        direction: e.direction,
+        eventType: e.eventType,
+        reportId: e.reportId,
+        description: e.description.replace(/<br>/g, '\n').replace(/<[^>]+>/g, ''),
+        rawHex: e.rawData.map(b => '0x' + b.toString(16).toUpperCase().padStart(2, '0')).join(' '),
+      })),
+    };
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    window.electronAPI.saveText?.(JSON.stringify(payload, null, 2), `live-sequence-${ts}.json`);
+    setLiveSeqStatus(`Saved JSON: ${events.length} events`);
+  }, [liveSeqAddr, liveSeqReg]);
 
   // Auto-scroll to bottom while listening
   useEffect(() => {
@@ -912,6 +965,8 @@ const LiveSequenceTab: React.FC<LiveSequenceTabProps> = ({
           {liveSeqListening ? 'Stop Listening' : 'Start Listening'}
         </button>
         <button onClick={handleClear} style={{ padding: '4px 12px', borderRadius: 4, border: 'none', background: '#3c3c3c', color: '#d4d4d4', cursor: 'pointer', fontSize: 12 }}>Clear</button>
+        <button onClick={handleSaveMd} style={{ padding: '4px 12px', borderRadius: 4, border: 'none', background: '#3c3c3c', color: '#d4d4d4', cursor: 'pointer', fontSize: 12 }}>Save MD</button>
+        <button onClick={handleSaveJson} style={{ padding: '4px 12px', borderRadius: 4, border: 'none', background: '#3c3c3c', color: '#d4d4d4', cursor: 'pointer', fontSize: 12 }}>Save JSON</button>
         <span style={{ fontSize: 11, color: '#6a9955' }}>{liveSeqStatus}</span>
         <span style={{ marginLeft: 'auto', fontSize: 11, color: liveSeqListening ? '#6a9955' : '#858585' }}>
           {liveSeqListening ? '● LIVE' : '○ idle'}
