@@ -110,7 +110,7 @@ cp -r i2c_hla ~/Library/Application\ Support/SaleaeLogic/Extensions/
 | **Playback** | 录制文件 / Saleae 导出 | 单帧回放 + 撤销 / 快照 |
 | **Frame List** | 实时累加 / 录制 | 列出每帧 scantime、finger、stylus、pkt |
 | **Debug** | 实时 / 录制 | 解析 stylus 包 bytes[15..46] 的 16 个 s16 通道 |
-| **HID Analysis** | 文本粘贴 / 实时帧 | 协议层分析（4 个子 Tab，详见下文） |
+| **HID Analysis** | 文本粘贴 / 实时帧 | 协议层分析（5 个子 Tab，详见下文） |
 
 ### Live — 实时轨迹
 
@@ -154,7 +154,7 @@ cp -r i2c_hla ~/Library/Application\ Support/SaleaeLogic/Extensions/
 
 ### HID Analysis — 协议分析
 
-[src/components/HidAnalysisView.tsx](touchpad-tracker/src/components/HidAnalysisView.tsx) 提供 4 个子 Tab，是整个项目最复杂的纯逻辑分析模块：
+[src/components/HidAnalysisView.tsx](touchpad-tracker/src/components/HidAnalysisView.tsx) 提供 5 个子 Tab，是整个项目最复杂的纯逻辑分析模块：
 
 #### Tab 1 · Power-On Seq
 
@@ -185,6 +185,18 @@ cp -r i2c_hla ~/Library/Application\ Support/SaleaeLogic/Extensions/
 - 实时模式：**Start Listening** 后订阅 `electronAPI.onFingerFrame`，每收到一帧立即按当前字段表解析、虚拟滚动显示、自动滚到底部
 - 字段表使用 `react-window` 风格的窗口化渲染，5 千帧不卡顿
 - 2 字节长度前缀开关（`LEN_REG`）
+
+#### Tab 5 · Live Sequence
+
+按 Power-On Seq 同样的逻辑实时分析 HID-over-I²C 协议流量。适合调试**任意标准 HID-I²C 设备**（vendor 测试、其他带 HID-I²C 的 I²C 设备）。**触摸板本身不按标准 HID-I²C 走**——这个 Tab 是为通用 HID-I²C 调试设计的。
+
+- 用户手动输入：HID Device Desc (30B) + HID Report Desc + Addr + Desc Reg
+- 实时模式：**Start Listening** 订阅 `i2c-raw-frame` IPC，每条 I²C TX 进入 `LiveHidAnalyzer.pushTransaction` 增量分析
+- 复用 `analyzeSequence` 的 9 种 eventType：Read HID Descriptor / HID Descriptor Response / Read Report Descriptor / Report Descriptor Response / Send Command（opcode 全解码）/ Get Report Response（带字段级 payload）/ Output Report / Set Report (Data) / Input Report
+- 事件表格按 Power-On Seq 风格（# / Time / Direction / Event Type / ReportID / Description）实时刷新
+- 表格上限 200 条 FIFO 截断
+- **架构核心**：`LiveHidAnalyzer` 类（[HidI2cSequenceAnalyzer.ts](touchpad-tracker/src/hid/HidI2cSequenceAnalyzer.ts)）持有 hidDescriptor / reportFields / pendingRead / order / events 状态，每次 push 一条 I²C 事务返回 0+ 新事件。`processSingleTransaction` 是 batch 与 live 共享的公共函数——Live Sequence 与 Power-On Seq **逻辑 100% 等价**（parity 验证：840 events 全等）。
+- 区别于 Power-On Seq：用户**手动**输入两份 descriptor，不做自动探测；Get Report Response 在 live 模式下用 `pendingRead='get_report_*'` 弱配对（无法预知 host 下一个 GET_REPORT 的 Report ID），orphan response 按通用 Input Report 降级
 
 ---
 

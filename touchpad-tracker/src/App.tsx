@@ -551,7 +551,7 @@ const App: React.FC = () => {
                   </tr>
                   <tr>
                     <td style={{ paddingRight: 12, color: '#6a9955', whiteSpace: 'nowrap' }}>HID Analysis</td>
-                    <td>4 个子 Tab：Power-On 序列 / Device Desc / Report Desc / Report Data</td>
+                    <td>5 个子 Tab：Power-On Seq / Device Desc / Report Desc / Report Data / Live Sequence</td>
                   </tr>
                 </tbody>
               </table>
@@ -608,7 +608,7 @@ const App: React.FC = () => {
 
             {/* ── HID Analysis 子 Tab ── */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>HID Analysis · 4 个子 Tab</div>
+              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>HID Analysis · 5 个子 Tab</div>
               <table style={{ width: '100%' }}>
                 <tbody>
                   <tr>
@@ -640,6 +640,18 @@ const App: React.FC = () => {
                       加载 Report Descriptor 后可粘贴 report data 静态解析（按 Report ID 分组），
                       或点 <span style={{ color: '#6a9955' }}>Start Listening</span> 订阅实时 UDP 帧持续解析。
                       支持 2 字节长度前缀开关；实时模式使用虚拟滚动，5 万帧不卡。
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ paddingRight: 12, color: '#ce9178', whiteSpace: 'nowrap', verticalAlign: 'top' }}>Live Sequence</td>
+                    <td>
+                      按 Power-On Seq 同样的逻辑实时分析 HID-over-I²C 协议流量。适合调试<span style={{ color: '#6a9955' }}>任何标准 HID-I²C 设备</span>（vendor 测试、通用 I²C 调试）。
+                      触摸板本身不按标准 HID-I²C 走，此 Tab 适合分析其他设备。
+                      用户手动输入 HID Device Desc (30B) + HID Report Desc + Addr + Desc Reg，
+                      点 <span style={{ color: '#6a9955' }}>Start Listening</span> 订阅 i2c-raw-frame IPC。
+                      实时显示 9 种 eventType：Read HID Descriptor / Send Command（opcode 全解码）
+                      / Get Report Response（字段级 payload）/ Input Report / Output Report 等。
+                      表格上限 200 条 FIFO 截断。
                     </td>
                   </tr>
                 </tbody>
