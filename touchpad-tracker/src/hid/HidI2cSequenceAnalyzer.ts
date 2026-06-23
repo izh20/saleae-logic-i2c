@@ -323,193 +323,257 @@ export function analyzeSequence(
   const preScanFields = preScanReportFields(deviceTx, hidDescRegister);
   if (preScanFields) reportFields = preScanFields;
 
-  let pendingRead: string | null = null;
-
-  function pushEvent(
-    tsVal: number, timeMsVal: number,
-    dir: string, type: string, desc: string,
-    rawData: number[], reportId: string = '',
-  ) {
-    events.push({
-      order: ++order,
-      timestamp: tsVal,
-      timeMs: timeMsVal,
-      direction: dir,
-      eventType: type,
-      reportId,
-      description: desc,
-      rawData,
-    });
-  }
+  const state: AnalyzerState = {
+    deviceAddress,
+    hidDescRegister,
+    hidDescriptor: null,
+    reportDescriptorBytes: [],
+    reportFields,
+    pendingRead: null,
+    pushEvent: (tsVal, timeMsVal, dir, type, desc, rawData, reportId = '') => {
+      events.push({
+        order: ++order,
+        timestamp: tsVal,
+        timeMs: timeMsVal,
+        direction: dir,
+        eventType: type,
+        reportId,
+        description: desc,
+        rawData,
+      });
+    },
+    // Captured by reference so the closure can update the outer vars.
+    setHidDescriptor: (d) => { hidDescriptor = d; },
+    setReportDescriptorBytes: (b) => { reportDescriptorBytes = b; },
+    getHidDescriptor: () => hidDescriptor,
+  };
 
   for (let i = 0; i < deviceTx.length; i++) {
-    const tx = deviceTx[i];
+    processSingleTransaction(deviceTx[i], i, deviceTx, state);
+  }
 
-    // Skip NAK / empty data transactions
-    if (tx.data.length === 0) {
-      pushEvent(tx.timestamp, tx.timeMs,
-        tx.isRead ? 'Host ← Device' : 'Host → Device',
-        'NAK (No ACK)',
-        `No ACK<br>ADDR=0x${tx.address.toString(16).toUpperCase().padStart(2, '0')}`,
-        [], '');
-      continue;
-    }
+  return { events, hidDescriptor, reportDescriptorBytes, reportFields, otherReadCount, otherWriteCount };
+}
 
-    const dir = tx.isRead ? 'Host ← Device' : 'Host → Device';
+/**
+ * Mutable state threaded through a single-pass analysis of I²C transactions.
+ * Same shape works for batch (analyzeSequence) and incremental (LiveHidAnalyzer).
+ */
+export interface AnalyzerState {
+  deviceAddress: number;
+  hidDescRegister: number;
+  hidDescriptor: HidI2cDescriptor | null;
+  reportDescriptorBytes: number[];
+  reportFields: ReportField[];
+  pendingRead: string | null;
+  pushEvent: (
+    timestamp: number, timeMs: number,
+    direction: string, eventType: string, description: string,
+    rawData: number[], reportId?: string,
+  ) => void;
+  /** Optional setters/getters that bridge closure mutation for batch mode.
+   *  Live mode holds its own descriptor refs and can omit these. */
+  setHidDescriptor?: (d: HidI2cDescriptor | null) => void;
+  setReportDescriptorBytes?: (b: number[]) => void;
+  getHidDescriptor?: () => HidI2cDescriptor | null;
+}
 
-    if (!tx.isRead && tx.data.length >= 2) {
-      // ═══ WRITE (length >= 2) ═══
-      const register = readU16LE(tx.data, 0);
+/**
+ * Process a single I²C transaction and emit 0+ events into state.pushEvent.
+ * Pass `i = -1` and `deviceTx = []` for incremental (live) mode to skip
+ * the "peek ahead" branches that only make sense in a complete batch scan.
+ */
+export function processSingleTransaction(
+  tx: I2cTransaction,
+  i: number,
+  deviceTx: I2cTransaction[],
+  state: AnalyzerState,
+): void {
+  const {
+    deviceAddress, hidDescRegister,
+    pushEvent,
+    setHidDescriptor, setReportDescriptorBytes, getHidDescriptor,
+  } = state;
+  let hidDescriptor = state.hidDescriptor;
+  let reportDescriptorBytes = state.reportDescriptorBytes;
+  let reportFields = state.reportFields;
+  let pendingRead = state.pendingRead;
 
-      if (register === hidDescRegister && tx.data.length === 2) {
-        pushEvent(tx.timestamp, tx.timeMs, dir, 'Read HID Descriptor',
-          `Request HID Device Descriptor<br>REG=0x${hidDescRegister.toString(16).toUpperCase().padStart(4, '0')}`,
-          tx.data);
-        pendingRead = 'hid_desc';
+  // Helper to keep getHidDescriptor in sync if the caller provided one.
+  const syncDesc = () => {
+    if (setHidDescriptor) setHidDescriptor(hidDescriptor);
+  };
+  const syncRd = () => {
+    if (setReportDescriptorBytes) setReportDescriptorBytes(reportDescriptorBytes);
+  };
 
-        // Peek ahead: if next tx is a read, parse descriptor now
-        if (i + 1 < deviceTx.length && deviceTx[i + 1].isRead) {
-          const resp = deviceTx[i + 1];
-          if (resp.data.length >= 30) {
-            try { hidDescriptor = parseDescriptor(resp.data); } catch { /* ignore */ }
-          }
+  // Skip NAK / empty data transactions
+  if (tx.data.length === 0) {
+    pushEvent(tx.timestamp, tx.timeMs,
+      tx.isRead ? 'Host ← Device' : 'Host → Device',
+      'NAK (No ACK)',
+      `No ACK<br>ADDR=0x${tx.address.toString(16).toUpperCase().padStart(2, '0')}`,
+      [], '');
+    return;
+  }
+
+  const dir = tx.isRead ? 'Host ← Device' : 'Host → Device';
+
+  if (!tx.isRead && tx.data.length >= 2) {
+    // ═══ WRITE (length >= 2) ═══
+    const register = readU16LE(tx.data, 0);
+
+    if (register === hidDescRegister && tx.data.length === 2) {
+      pushEvent(tx.timestamp, tx.timeMs, dir, 'Read HID Descriptor',
+        `Request HID Device Descriptor<br>REG=0x${hidDescRegister.toString(16).toUpperCase().padStart(4, '0')}`,
+        tx.data);
+      pendingRead = 'hid_desc';
+      state.pendingRead = pendingRead;
+
+      // Peek ahead: if next tx is a read, parse descriptor now (batch only)
+      if (i >= 0 && i + 1 < deviceTx.length && deviceTx[i + 1].isRead) {
+        const resp = deviceTx[i + 1];
+        if (resp.data.length >= 30) {
+          try { hidDescriptor = parseDescriptor(resp.data); state.hidDescriptor = hidDescriptor; syncDesc(); } catch { /* ignore */ }
         }
-      } else if (hidDescriptor && register === hidDescriptor.reportDescRegister && tx.data.length === 2) {
-        pushEvent(tx.timestamp, tx.timeMs, dir, 'Read Report Descriptor',
-          `Request Report Descriptor<br>REG=0x${register.toString(16).toUpperCase().padStart(4, '0')}`,
-          tx.data);
-        pendingRead = 'report_desc';
+      }
+    } else if (hidDescriptor && register === hidDescriptor.reportDescRegister && tx.data.length === 2) {
+      pushEvent(tx.timestamp, tx.timeMs, dir, 'Read Report Descriptor',
+        `Request Report Descriptor<br>REG=0x${register.toString(16).toUpperCase().padStart(4, '0')}`,
+        tx.data);
+      pendingRead = 'report_desc';
+      state.pendingRead = pendingRead;
 
-        if (i + 1 < deviceTx.length && deviceTx[i + 1].isRead) {
-          reportDescriptorBytes = deviceTx[i + 1].data;
-        }
-      } else if (hidDescriptor && register === hidDescriptor.commandRegister) {
-        // Command register — opcode at data[2:4]
-        let opcode = 0;
-        if (tx.data.length >= 4) opcode = readU16LE(tx.data, 2);
-        const cmdOpcode = (opcode >> 8) & 0xFF;
-        pushEvent(tx.timestamp, tx.timeMs, dir, 'Send Command',
-          decodeCommand(opcode, tx.data, register, reportFields),
-          tx.data);
+      if (i >= 0 && i + 1 < deviceTx.length && deviceTx[i + 1].isRead) {
+        reportDescriptorBytes = deviceTx[i + 1].data;
+        state.reportDescriptorBytes = reportDescriptorBytes; syncRd();
+      }
+    } else if (hidDescriptor && register === hidDescriptor.commandRegister) {
+      // Command register — opcode at data[2:4]
+      let opcode = 0;
+      if (tx.data.length >= 4) opcode = readU16LE(tx.data, 2);
+      const cmdOpcode = (opcode >> 8) & 0xFF;
+      pushEvent(tx.timestamp, tx.timeMs, dir, 'Send Command',
+        decodeCommand(opcode, tx.data, register, reportFields),
+        tx.data);
 
-        if (cmdOpcode === 0x02) {
-          // GET_REPORT — expect response
-          const rt = ((opcode & 0xFF) >> 4) & 0x03;
-          let rid = opcode & 0x0F;
-          if (rid === 0x0F && tx.data.length >= 7) rid = tx.data[6];
-          const typeName = rt === 1 ? 'Input' : rt === 2 ? 'Output' : 'Feature';
-          pendingRead = `get_report_${typeName}_0x${rid.toString(16).toUpperCase()}`;
-        } else {
-          pendingRead = null;
-        }
-      } else if (hidDescriptor && register === hidDescriptor.outputRegister) {
-        pushEvent(tx.timestamp, tx.timeMs, dir, 'Output Report',
-          `Send Output Report<br>OUTPUT_REG=0x${register.toString(16).toUpperCase().padStart(4, '0')}`,
-          tx.data);
-        pendingRead = null;
-      } else if (hidDescriptor && register === hidDescriptor.dataRegister) {
-        pushEvent(tx.timestamp, tx.timeMs, dir, 'Set Report (Data)',
-          `Write Data Register<br>DATA_REG=0x${register.toString(16).toUpperCase().padStart(4, '0')}`,
-          tx.data);
-        pendingRead = null;
+      if (cmdOpcode === 0x02) {
+        // GET_REPORT — expect response
+        const rt = ((opcode & 0xFF) >> 4) & 0x03;
+        let rid = opcode & 0x0F;
+        if (rid === 0x0F && tx.data.length >= 7) rid = tx.data[6];
+        const typeName = rt === 1 ? 'Input' : rt === 2 ? 'Output' : 'Feature';
+        pendingRead = `get_report_${typeName}_0x${rid.toString(16).toUpperCase()}`;
       } else {
-        pushEvent(tx.timestamp, tx.timeMs, dir, 'Write Data',
-          `Write register 0x${register.toString(16).toUpperCase().padStart(4, '0')} (${tx.data.length}B)`,
-          tx.data);
         pendingRead = null;
       }
+      state.pendingRead = pendingRead;
+    } else if (hidDescriptor && register === hidDescriptor.outputRegister) {
+      pushEvent(tx.timestamp, tx.timeMs, dir, 'Output Report',
+        `Send Output Report<br>OUTPUT_REG=0x${register.toString(16).toUpperCase().padStart(4, '0')}`,
+        tx.data);
+      pendingRead = null; state.pendingRead = null;
+    } else if (hidDescriptor && register === hidDescriptor.dataRegister) {
+      pushEvent(tx.timestamp, tx.timeMs, dir, 'Set Report (Data)',
+        `Write Data Register<br>DATA_REG=0x${register.toString(16).toUpperCase().padStart(4, '0')}`,
+        tx.data);
+      pendingRead = null; state.pendingRead = null;
+    } else {
+      pushEvent(tx.timestamp, tx.timeMs, dir, 'Write Data',
+        `Write register 0x${register.toString(16).toUpperCase().padStart(4, '0')} (${tx.data.length}B)`,
+        tx.data);
+      pendingRead = null; state.pendingRead = null;
+    }
 
-    } else if (tx.isRead) {
-      // ═══ READ ═══
+  } else if (tx.isRead) {
+    // ═══ READ ═══
 
-      if (pendingRead === 'hid_desc' && tx.data.length >= 30) {
-        try { hidDescriptor = parseDescriptor(tx.data); } catch { /* ignore */ }
-        const desc = hidDescriptor;
-        pushEvent(tx.timestamp, tx.timeMs, dir, 'HID Descriptor Response',
-          desc
-            ? `Received HID Device Descriptor (${tx.data.length}B)<br>VID=0x${desc.vendorId.toString(16).toUpperCase().padStart(4, '0')} PID=0x${desc.productId.toString(16).toUpperCase().padStart(4, '0')}<br>ReportDescReg=0x${desc.reportDescRegister.toString(16).toUpperCase().padStart(4, '0')} CmdReg=0x${desc.commandRegister.toString(16).toUpperCase().padStart(4, '0')} DataReg=0x${desc.dataRegister.toString(16).toUpperCase().padStart(4, '0')} MaxInput=${desc.maxInputLength}B`
-            : `Received ${tx.data.length}B but HID Descriptor parse failed`,
-          tx.data);
-        pendingRead = null;
+    if (pendingRead === 'hid_desc' && tx.data.length >= 30) {
+      try { hidDescriptor = parseDescriptor(tx.data); state.hidDescriptor = hidDescriptor; syncDesc(); } catch { /* ignore */ }
+      const desc = getHidDescriptor ? getHidDescriptor() : hidDescriptor;
+      pushEvent(tx.timestamp, tx.timeMs, dir, 'HID Descriptor Response',
+        desc
+          ? `Received HID Device Descriptor (${tx.data.length}B)<br>VID=0x${desc.vendorId.toString(16).toUpperCase().padStart(4, '0')} PID=0x${desc.productId.toString(16).toUpperCase().padStart(4, '0')}<br>ReportDescReg=0x${desc.reportDescRegister.toString(16).toUpperCase().padStart(4, '0')} CmdReg=0x${desc.commandRegister.toString(16).toUpperCase().padStart(4, '0')} DataReg=0x${desc.dataRegister.toString(16).toUpperCase().padStart(4, '0')} MaxInput=${desc.maxInputLength}B`
+          : `Received ${tx.data.length}B but HID Descriptor parse failed`,
+        tx.data);
+      pendingRead = null; state.pendingRead = null;
 
-      } else if (pendingRead === 'report_desc') {
-        reportDescriptorBytes = tx.data;
-        pushEvent(tx.timestamp, tx.timeMs, dir, 'Report Descriptor Response',
-          `Received Report Descriptor (${tx.data.length}B), parsed as field layout`,
-          tx.data);
-        pendingRead = null;
+    } else if (pendingRead === 'report_desc') {
+      reportDescriptorBytes = tx.data;
+      state.reportDescriptorBytes = reportDescriptorBytes; syncRd();
+      pushEvent(tx.timestamp, tx.timeMs, dir, 'Report Descriptor Response',
+        `Received Report Descriptor (${tx.data.length}B), parsed as field layout`,
+        tx.data);
+      pendingRead = null; state.pendingRead = null;
 
-      } else if (pendingRead && pendingRead.startsWith('get_report_')) {
-        // Response to Get Report command
-        const reportInfo = pendingRead.substring('get_report_'.length);
-        if (tx.data.length >= 2) {
-          const length = readU16LE(tx.data, 0);
-          if (length >= 3 && tx.data.length >= 3) {
-            const repId = tx.data[2];
-            const dataBytes = Math.min(length - 3, tx.data.length - 3);
-            const decoded = decodeReportPayload(tx.data, 3, repId, reportInfo, reportFields);
-            const grField = decoded != null
-              ? `[${decoded}]`
-              : (dataBytes > 0 ? `[${hexDump(tx.data, 3, Math.min(dataBytes, 16))}${dataBytes > 16 ? '...' : ''}]` : '(empty)');
-            pushEvent(tx.timestamp, tx.timeMs, dir, 'Get Report Response',
-              `Received ${reportInfo} current value → ${grField}<br>LEN=${length}B`,
-              tx.data, `0x${repId.toString(16).toUpperCase()}`);
-          } else {
-            pushEvent(tx.timestamp, tx.timeMs, dir, 'Get Report Response',
-              `Received ${reportInfo} LEN=${length}B`, tx.data);
-          }
+    } else if (pendingRead && pendingRead.startsWith('get_report_')) {
+      // Response to Get Report command
+      const reportInfo = pendingRead.substring('get_report_'.length);
+      if (tx.data.length >= 2) {
+        const length = readU16LE(tx.data, 0);
+        if (length >= 3 && tx.data.length >= 3) {
+          const repId = tx.data[2];
+          const dataBytes = Math.min(length - 3, tx.data.length - 3);
+          const decoded = decodeReportPayload(tx.data, 3, repId, reportInfo, reportFields);
+          const grField = decoded != null
+            ? `[${decoded}]`
+            : (dataBytes > 0 ? `[${hexDump(tx.data, 3, Math.min(dataBytes, 16))}${dataBytes > 16 ? '...' : ''}]` : '(empty)');
+          pushEvent(tx.timestamp, tx.timeMs, dir, 'Get Report Response',
+            `Received ${reportInfo} current value → ${grField}<br>LEN=${length}B`,
+            tx.data, `0x${repId.toString(16).toUpperCase()}`);
         } else {
           pushEvent(tx.timestamp, tx.timeMs, dir, 'Get Report Response',
-            `Received ${reportInfo} (${tx.data.length}B)`, tx.data);
+            `Received ${reportInfo} LEN=${length}B`, tx.data);
         }
-        pendingRead = null;
+      } else {
+        pushEvent(tx.timestamp, tx.timeMs, dir, 'Get Report Response',
+          `Received ${reportInfo} (${tx.data.length}B)`, tx.data);
+      }
+      pendingRead = null; state.pendingRead = null;
 
-      } else if (tx.data.length >= 30 && !hidDescriptor) {
-        // Might be descriptor response without prior write
-        try { hidDescriptor = parseDescriptor(tx.data); } catch { /* ignore */ }
-        if (hidDescriptor) {
-          pushEvent(tx.timestamp, tx.timeMs, dir, 'HID Descriptor Response',
-            `Received HID Device Descriptor (${tx.data.length}B)`, tx.data);
-        } else {
-          pushEvent(tx.timestamp, tx.timeMs, dir, 'Read Data',
-            `Received ${tx.data.length}B`, tx.data);
-        }
-
-      } else if (tx.data.length >= 2) {
-        // Check for HID I2C input report format: [len_lo, len_hi, report_id, data...]
-        const length = readU16LE(tx.data, 0);
-        if (length === 0) {
-          pushEvent(tx.timestamp, tx.timeMs, dir, 'Input (empty)',
-            'No input data from device (empty Input, LEN=0)', tx.data);
-        } else if (length >= 3 && length <= tx.data.length) {
-          const repId = tx.data[2];
-          const decoded = decodeReportPayload(tx.data, 3, repId, 'Input', reportFields);
-          const inField = decoded != null
-            ? `[${decoded}]`
-            : `payload=${length - 2}B`;
-          pushEvent(tx.timestamp, tx.timeMs, dir, 'Input Report',
-            `Received Input Report Input#${repId.toString(16).toUpperCase()} → ${inField}<br>LEN=${length}B`,
-            tx.data, `0x${repId.toString(16).toUpperCase()}`);
-        } else if (length > 0 && length <= tx.data.length) {
-          pushEvent(tx.timestamp, tx.timeMs, dir, 'Input Report',
-            `Received Input Report LEN=${length}B payload=${length - 2}B`, tx.data);
-        } else {
-          pushEvent(tx.timestamp, tx.timeMs, dir, 'Read Data',
-            `Received ${tx.data.length}B`, tx.data);
-        }
+    } else if (tx.data.length >= 30 && !hidDescriptor) {
+      // Might be descriptor response without prior write
+      try { hidDescriptor = parseDescriptor(tx.data); state.hidDescriptor = hidDescriptor; syncDesc(); } catch { /* ignore */ }
+      if (hidDescriptor) {
+        pushEvent(tx.timestamp, tx.timeMs, dir, 'HID Descriptor Response',
+          `Received HID Device Descriptor (${tx.data.length}B)`, tx.data);
       } else {
         pushEvent(tx.timestamp, tx.timeMs, dir, 'Read Data',
           `Received ${tx.data.length}B`, tx.data);
       }
 
+    } else if (tx.data.length >= 2) {
+      // Check for HID I2C input report format: [len_lo, len_hi, report_id, data...]
+      const length = readU16LE(tx.data, 0);
+      if (length === 0) {
+        pushEvent(tx.timestamp, tx.timeMs, dir, 'Input (empty)',
+          'No input data from device (empty Input, LEN=0)', tx.data);
+      } else if (length >= 3 && length <= tx.data.length) {
+        const repId = tx.data[2];
+        const decoded = decodeReportPayload(tx.data, 3, repId, 'Input', reportFields);
+        const inField = decoded != null
+          ? `[${decoded}]`
+          : `payload=${length - 2}B`;
+        pushEvent(tx.timestamp, tx.timeMs, dir, 'Input Report',
+          `Received Input Report Input#${repId.toString(16).toUpperCase()} → ${inField}<br>LEN=${length}B`,
+          tx.data, `0x${repId.toString(16).toUpperCase()}`);
+      } else if (length > 0 && length <= tx.data.length) {
+        pushEvent(tx.timestamp, tx.timeMs, dir, 'Input Report',
+          `Received Input Report LEN=${length}B payload=${length - 2}B`, tx.data);
+      } else {
+        pushEvent(tx.timestamp, tx.timeMs, dir, 'Read Data',
+          `Received ${tx.data.length}B`, tx.data);
+      }
     } else {
-      // Write with length < 2
-      pushEvent(tx.timestamp, tx.timeMs, dir, 'Write Data',
-        `Write ${tx.data.length}B`, tx.data);
+      pushEvent(tx.timestamp, tx.timeMs, dir, 'Read Data',
+        `Received ${tx.data.length}B`, tx.data);
     }
-  }
 
-  return { events, hidDescriptor, reportDescriptorBytes, reportFields, otherReadCount, otherWriteCount };
+  } else {
+    // Write with length < 2
+    pushEvent(tx.timestamp, tx.timeMs, dir, 'Write Data',
+      `Write ${tx.data.length}B`, tx.data);
+  }
 }
 
 /** Generate Markdown report — mirrors C# GenerateMarkdown */
