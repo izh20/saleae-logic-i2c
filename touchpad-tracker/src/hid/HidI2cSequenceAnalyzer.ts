@@ -686,3 +686,121 @@ function generateDescriptorMarkdown(desc: HidI2cDescriptor): string {
 
   return md;
 }
+
+// ═══════════════════════════════════════════════════════════
+//  LiveHidAnalyzer — stateful wrapper for incremental HID-over-I²C analysis
+//  Used by the Live Sequence subTab to push one I²C transaction at a time
+//  and receive 0+ new events back, without re-scanning the entire history.
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Stateful analyzer for the Live Sequence subTab.
+ *
+ * Lifecycle:
+ *   1. Construct with deviceAddress + hidDescRegister (matching what the
+ *      user typed into the UI).
+ *   2. loadDescriptor(hidDesc, reportFields) — call once after the user
+ *      clicks Load in the UI, before Start Listening.
+ *   3. pushTransaction(txn) for each new I²C transaction arriving via
+ *      the i2c-raw-frame IPC channel. Returns the new events emitted
+ *      by this transaction.
+ *   4. reset() — call on Stop to clear all state before the next session.
+ */
+export class LiveHidAnalyzer {
+  private deviceAddress: number;
+  private hidDescRegister: number;
+  private hidDescriptor: HidI2cDescriptor | null = null;
+  private reportDescriptorBytes: number[] = [];
+  private reportFields: ReportField[] = [];
+  private pendingRead: string | null = null;
+  private order = 0;
+  private allEvents: HidI2cEvent[] = [];
+  private readonly maxEvents: number;
+
+  constructor(deviceAddress: number, hidDescRegister: number, maxEvents = 200) {
+    this.deviceAddress = deviceAddress;
+    this.hidDescRegister = hidDescRegister;
+    this.maxEvents = maxEvents;
+  }
+
+  /** Reset all state. Called by Stop button. */
+  reset(): void {
+    this.hidDescriptor = null;
+    this.reportDescriptorBytes = [];
+    this.reportFields = [];
+    this.pendingRead = null;
+    this.order = 0;
+    this.allEvents = [];
+  }
+
+  /**
+   * Pre-load descriptor (called by Load button, before Start Listening).
+   * In live mode the user supplies these directly, so the pre-scan phase
+   * of analyzeSequence is bypassed.
+   */
+  loadDescriptor(hidDesc: HidI2cDescriptor, reportFields: ReportField[]): void {
+    this.hidDescriptor = hidDesc;
+    this.reportFields = reportFields;
+  }
+
+  /**
+   * Push one I²C transaction. Returns 0+ new events emitted by this txn.
+   * The events are also stored internally (FIFO-capped at maxEvents).
+   */
+  pushTransaction(tx: I2cTransaction): HidI2cEvent[] {
+    // Build a transient state for this single transaction. We hold our
+    // own hidDescriptor / reportFields / pendingRead / order and sync
+    // them through the closure-via-setHidDescriptor bridge.
+    const newEvents: HidI2cEvent[] = [];
+    const self = this;
+    const state: AnalyzerState = {
+      deviceAddress: this.deviceAddress,
+      hidDescRegister: this.hidDescRegister,
+      hidDescriptor: this.hidDescriptor,
+      reportDescriptorBytes: this.reportDescriptorBytes,
+      reportFields: this.reportFields,
+      pendingRead: this.pendingRead,
+      pushEvent: (timestamp, timeMs, direction, eventType, description, rawData, reportId = '') => {
+        const evt: HidI2cEvent = {
+          order: ++self.order,
+          timestamp, timeMs, direction, eventType, reportId, description, rawData,
+        };
+        newEvents.push(evt);
+        self.allEvents.push(evt);
+        if (self.allEvents.length > self.maxEvents) {
+          // FIFO drop oldest, but keep order monotonic.
+          self.allEvents.shift();
+        }
+      },
+      setHidDescriptor: (d) => { self.hidDescriptor = d; },
+      setReportDescriptorBytes: (b) => { self.reportDescriptorBytes = b; },
+      getHidDescriptor: () => self.hidDescriptor,
+    };
+
+    // In live mode there's no "next" transaction to peek at, so pass (-1, []).
+    processSingleTransaction(tx, -1, [], state);
+
+    // Sync any state mutations back.
+    this.pendingRead = state.pendingRead;
+    this.hidDescriptor = state.hidDescriptor;
+    this.reportDescriptorBytes = state.reportDescriptorBytes;
+    this.reportFields = state.reportFields;
+
+    return newEvents;
+  }
+
+  /** All events accumulated so far (FIFO-capped at maxEvents). */
+  getEvents(): HidI2cEvent[] {
+    return this.allEvents;
+  }
+
+  /** HID descriptor (null if not yet loaded). */
+  getHidDescriptor(): HidI2cDescriptor | null {
+    return this.hidDescriptor;
+  }
+
+  /** Current event count. */
+  getEventCount(): number {
+    return this.allEvents.length;
+  }
+}
