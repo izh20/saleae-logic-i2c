@@ -15,9 +15,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // Listen for raw I²C TX frames (every report ID). Used by HID Analysis
-  // Report Data Parser to parse arbitrary reports, not just finger / stylus.
-  onI2cRawFrame: (callback: (frame: { timestamp: number; i2cAddress: number; rawBytes: number[] }) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, frame: { timestamp: number; i2cAddress: number; rawBytes: number[] }) => {
+  // Report Data Parser to parse arbitrary reports, not just finger / stylus,
+  // and by the Live Sequence subTab to drive incremental HID-over-I²C
+  // protocol analysis.
+  onI2cRawFrame: (callback: (frame: { timestamp: number; i2cAddress: number; isRead: boolean; register: number | null; rawBytes: number[] }) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, frame: { timestamp: number; i2cAddress: number; isRead: boolean; register: number | null; rawBytes: number[] }) => {
       callback(frame);
     };
     ipcRenderer.on('i2c-raw-frame', listener);

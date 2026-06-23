@@ -180,13 +180,23 @@ function startUdpServer() {
 
         // Always forward the raw TX bytes to a parallel IPC channel for the
         // generic Report Data Parser (HID Analysis). This channel carries
-        // every report ID, not just finger / stylus.
+        // every report ID, not just finger / stylus. For the new Live Sequence
+        // subTab (HID-over-I²C protocol analyzer), we also forward the I²C
+        // direction and (for 2-byte writes) the register address being selected.
         const i2cAddressNum = parseHexOrDec(message.data.addr || '0');
+        const rwRaw = (message.data.rw || '').toString().trim().toUpperCase();
+        const isRead = rwRaw === 'R' || rwRaw === 'READ';
+        const parsedBytes = dataArray.map(d => parseHexOrDec(d));
+        const register = !isRead && parsedBytes.length === 2
+          ? (parsedBytes[0] | (parsedBytes[1] << 8)) & 0xFFFF
+          : null;
         if (mainWindow) {
           mainWindow.webContents.send('i2c-raw-frame', {
             timestamp,
             i2cAddress: i2cAddressNum,
-            rawBytes: dataArray.map(d => parseHexOrDec(d)),
+            isRead,
+            register,
+            rawBytes: parsedBytes,
           });
         }
 

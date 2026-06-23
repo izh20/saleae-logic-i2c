@@ -3,6 +3,8 @@ import { FingerFrame, TouchpadConfig } from './finger';
 export interface I2cRawFrame {
   timestamp: number;
   i2cAddress: number;
+  isRead: boolean;
+  register: number | null;
   rawBytes: number[];
 }
 
