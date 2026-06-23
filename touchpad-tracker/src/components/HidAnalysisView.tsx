@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { marked } from 'marked';
 import { HidI2cDescriptor, ReportField } from '../hid/types';
 import { parseHexString, formatFieldValue } from '../hid/HidDescriptorFormatter';
@@ -816,8 +816,6 @@ const LiveSequenceTab: React.FC<LiveSequenceTabProps> = ({
   liveSeqTick, setLiveSeqTick,
   liveSeqAnalyzerRef, liveSeqUnsubscribeRef, liveSeqStartTimeRef,
 }) => {
-  const tableScrollRef = useRef<HTMLDivElement>(null);
-
   const handleLoadHidDesc = useCallback(() => {
     try {
       const bytes = parseHexString(liveSeqHidDescHex);
@@ -965,15 +963,57 @@ const LiveSequenceTab: React.FC<LiveSequenceTabProps> = ({
     setLiveSeqStatus(`Saved JSON: ${events.length} events`);
   }, [liveSeqAddr, liveSeqReg]);
 
-  // Auto-scroll to bottom while listening
+  // Auto-scroll state: when true, follow the tail (auto-scroll to bottom
+  // on each new event). When false, the user's scroll position is preserved
+  // so they can examine older events. "Jump to latest" button toggles this
+  // back on. Defaults to true (live-mode convention: show what's new).
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewH, setViewH] = useState(0);
+  const liveSeqScrollRef = useRef<HTMLDivElement>(null);
+  const liveSeqInnerRef = useRef<HTMLDivElement>(null);
+
+  // Watch for user scrolling away from the bottom — when they do, disable
+  // auto-scroll so the view doesn't jump. When they click "Jump to latest"
+  // or scroll back to the bottom, re-enable.
   useEffect(() => {
-    if (liveSeqListening && tableScrollRef.current) {
-      tableScrollRef.current.scrollTop = tableScrollRef.current.scrollHeight;
-    }
-  }, [liveSeqTick, liveSeqListening]);
+    const el = liveSeqScrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setViewH(el.clientHeight));
+    ro.observe(el);
+    setViewH(el.clientHeight);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!autoScroll) return;
+    const el = liveSeqScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [liveSeqTick, autoScroll]);
+
+  const handleLiveSeqScroll = useCallback(() => {
+    const el = liveSeqScrollRef.current;
+    if (!el) return;
+    const newScrollTop = el.scrollTop;
+    setScrollTop(newScrollTop);
+    // If the user is within 50px of the bottom, treat as "at the tail" —
+    // keep autoScroll on. Otherwise they've scrolled up, disable.
+    const atBottom = el.scrollHeight - newScrollTop - el.clientHeight < 50;
+    if (!atBottom && autoScroll) setAutoScroll(false);
+  }, [autoScroll]);
 
   const analyzer = liveSeqAnalyzerRef.current;
   const allEvents: HidI2cEvent[] = analyzer ? analyzer.getEvents() : [];
+  const totalRows = allEvents.length;
+
+  // Virtualized row window: only render rows in [startIdx, endIdx) plus a
+  // small buffer. With totalRows in the millions this still renders fast.
+  const bufferRows = 20;
+  const rowHeight = 22; // px; must match the actual <tr> height below
+  const totalHeight = totalRows * rowHeight;
+  const startIdx = Math.max(0, Math.floor(scrollTop / rowHeight) - bufferRows);
+  const endIdx = Math.min(totalRows, Math.ceil((scrollTop + viewH) / rowHeight) + bufferRows);
+  const visibleEvents = useMemo(() => allEvents.slice(startIdx, endIdx), [allEvents, startIdx, endIdx]);
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -1022,39 +1062,77 @@ const LiveSequenceTab: React.FC<LiveSequenceTabProps> = ({
         </span>
       </div>
 
-      {/* Events table */}
-      <div ref={tableScrollRef} style={{ flex: 1, overflow: 'auto', background: '#1e1e1e' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'monospace', fontSize: 11 }}>
-          <thead style={{ position: 'sticky', top: 0, background: '#252526', zIndex: 1 }}>
+      {/* Events table — virtualized: only render rows in the viewport (plus
+          a 20-row buffer above + below). 1M events still renders in
+          O(viewport) = ~50 rows. The full count is shown in the header so
+          the user always knows how much data is captured. */}
+      <div ref={liveSeqScrollRef} onScroll={handleLiveSeqScroll} style={{ flex: 1, overflow: 'auto', background: '#1e1e1e' }}>
+        <div style={{ position: 'sticky', top: 0, zIndex: 2, background: '#252526', display: 'flex', alignItems: 'center', padding: '4px 8px', borderBottom: '1px solid #3c3c3c', fontSize: 11, color: '#858585' }}>
+          <span style={{ color: '#6a9955', fontWeight: 600 }}>Total: {totalRows} events</span>
+          <span style={{ marginLeft: 12 }}>
+            {totalRows > 0 ? `Showing rows ${startIdx + 1}-${endIdx}` : '(empty)'}
+          </span>
+          {!autoScroll && totalRows > 0 && (
+            <button
+              onClick={() => { setAutoScroll(true); const el = liveSeqScrollRef.current; if (el) el.scrollTop = el.scrollHeight; }}
+              style={{ marginLeft: 12, padding: '2px 8px', fontSize: 11, borderRadius: 3, border: 'none', background: '#6a9955', color: '#fff', cursor: 'pointer' }}
+            >
+              ⤓ Jump to latest
+            </button>
+          )}
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'monospace', fontSize: 11, tableLayout: 'fixed' }}>
+          <colgroup>
+            <col style={{ width: 40 }} />
+            <col style={{ width: 90 }} />
+            <col style={{ width: 110 }} />
+            <col style={{ width: 170 }} />
+            <col style={{ width: 60 }} />
+            <col />
+          </colgroup>
+          <thead>
             <tr>
-              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955', width: 40 }}>#</th>
-              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955', width: 90 }}>Time (s)</th>
-              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955', width: 110 }}>Direction</th>
-              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955', width: 170 }}>Event Type</th>
-              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955', width: 60 }}>ReportID</th>
+              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955' }}>#</th>
+              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955' }}>Time (s)</th>
+              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955' }}>Direction</th>
+              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955' }}>Event Type</th>
+              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955' }}>ReportID</th>
               <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955' }}>Description</th>
             </tr>
           </thead>
-          <tbody>
-            {allEvents.map((evt) => (
-              <tr key={evt.order} style={{ background: evt.order % 2 === 0 ? '#1e1e1e' : '#252526' }}>
-                <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: '#858585' }}>{evt.order}</td>
-                <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: '#d4d4d4' }}>{evt.timestamp.toFixed(3)}</td>
-                <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: evt.direction.includes('←') ? '#ce9178' : '#569cd6' }}>{evt.direction}</td>
-                <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: '#d4d4d4', fontWeight: 600 }}>{evt.eventType}</td>
-                <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: '#ce9178' }}>{evt.reportId || '-'}</td>
-                <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: '#d4d4d4' }} dangerouslySetInnerHTML={{ __html: evt.description }} />
-              </tr>
-            ))}
-            {allEvents.length === 0 && (
-              <tr>
-                <td colSpan={6} style={{ padding: 20, textAlign: 'center', color: '#858585', fontStyle: 'italic' }}>
-                  {liveSeqListening ? 'Waiting for I²C frames...' : 'Load descriptors and click Start Listening to begin.'}
-                </td>
-              </tr>
-            )}
-          </tbody>
         </table>
+        {/* Scrollable body — the inner spacer gives the scrollbar the
+            correct total height; the table body is positioned absolutely
+            within it so the header stays visible. */}
+        <div ref={liveSeqInnerRef} style={{ position: 'relative', height: totalHeight }}>
+          <table style={{ position: 'absolute', top: startIdx * rowHeight, left: 0, right: 0, borderCollapse: 'collapse', fontFamily: 'monospace', fontSize: 11, tableLayout: 'fixed' }}>
+            <colgroup>
+              <col style={{ width: 40 }} />
+              <col style={{ width: 90 }} />
+              <col style={{ width: 110 }} />
+              <col style={{ width: 170 }} />
+              <col style={{ width: 60 }} />
+              <col />
+            </colgroup>
+            <tbody>
+              {visibleEvents.map((evt) => (
+                <tr key={evt.order} style={{ background: evt.order % 2 === 0 ? '#1e1e1e' : '#252526', height: rowHeight }}>
+                  <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: '#858585' }}>{evt.order}</td>
+                  <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: '#d4d4d4' }}>{evt.timestamp.toFixed(3)}</td>
+                  <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: evt.direction.includes('←') ? '#ce9178' : '#569cd6' }}>{evt.direction}</td>
+                  <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: '#d4d4d4', fontWeight: 600 }}>{evt.eventType}</td>
+                  <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: '#ce9178' }}>{evt.reportId || '-'}</td>
+                  <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: '#d4d4d4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} dangerouslySetInnerHTML={{ __html: evt.description }} />
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {totalRows === 0 && (
+            <div style={{ padding: 20, textAlign: 'center', color: '#858585', fontStyle: 'italic' }}>
+              {liveSeqListening ? 'Waiting for I²C frames...' : 'Load descriptors and click Start Listening to begin.'}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
