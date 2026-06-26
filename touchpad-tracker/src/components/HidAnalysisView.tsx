@@ -15,7 +15,7 @@ import { parseSingleFrame } from '../hid/HidReportDataParser';
 import { generateWara } from '../hid/WaraGenerator';
 import { WaraToDescriptorGenerator } from '../hid/WaraToDescriptorGenerator';
 
-type SubTab = 'powerOn' | 'deviceDesc' | 'reportDesc' | 'reportDataParser' | 'liveSequence';
+type SubTab = 'powerOn' | 'deviceDesc' | 'reportDesc' | 'reportDataParser' | 'liveSequence' | 'hidDevice';
 
 function wrapHtml(body: string): string {
   return `<style>
@@ -335,6 +335,20 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
   const liveSeqUnsubscribeRef = useRef<(() => void) | null>(null);
   const liveSeqStartTimeRef = useRef<number>(0);
 
+  // Tab 6: HID I²C Device
+  const [hidDeviceList, setHidDeviceList] = useState<any[]>([]);
+  const [hidSelectedPath, setHidSelectedPath] = useState('');
+  const [hidConnected, setHidConnected] = useState(false);
+  const [hidDeviceInfo, setHidDeviceInfo] = useState<string>('');
+  const [hidHidDescHex, setHidHidDescHex] = useState(() => loadStoredString('tab6:hidHidDescHex', ''));
+  const [hidReportDescHex, setHidReportDescHex] = useState(() => loadStoredString('tab6:hidReportDescHex', ''));
+  const [hidStatus, setHidStatus] = useState('');
+  const [hidListening, setHidListening] = useState(false);
+  const [hidTick, setHidTick] = useState(0);
+  const hidAnalyzerRef = useRef<LiveHidAnalyzer | null>(null);
+  const hidUnsubscribeRef = useRef<(() => void) | null>(null);
+  const hidStartTimeRef = useRef<number>(0);
+
   // ── Persistence: auto-save each input field to localStorage on change.
   // localStorage writes are synchronous and cheap (sub-millisecond) so we
   // do them on every state change without debouncing.
@@ -351,6 +365,8 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
   useEffect(() => { saveStoredString('tab5:liveSeqReportDescHex', liveSeqReportDescHex); }, [liveSeqReportDescHex]);
   useEffect(() => { saveStoredString('tab5:liveSeqAddr', liveSeqAddr); }, [liveSeqAddr]);
   useEffect(() => { saveStoredString('tab5:liveSeqReg', liveSeqReg); }, [liveSeqReg]);
+  useEffect(() => { saveStoredString('tab6:hidHidDescHex', hidHidDescHex); }, [hidHidDescHex]);
+  useEffect(() => { saveStoredString('tab6:hidReportDescHex', hidReportDescHex); }, [hidReportDescHex]);
 
   // === Handlers ===
 
@@ -471,7 +487,7 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
     <div style={{ width:'100%', height:'100%', display:'flex', flexDirection:'column', background:'#1e1e1e', overflow:'hidden' }}>
       {/* Sub-tabs */}
       <div style={{ display:'flex', gap:0, padding:'0 8px', background:'#252526', borderBottom:'1px solid #3c3c3c', flexShrink:0 }}>
-        {(['powerOn','deviceDesc','reportDesc','reportDataParser','liveSequence'] as SubTab[]).map(key => (
+        {(['powerOn','deviceDesc','reportDesc','reportDataParser','liveSequence','hidDevice'] as SubTab[]).map(key => (
           <button key={key} onClick={() => setSubTab(key)}
             style={{
               padding:'8px 16px', border:'none', cursor:'pointer', fontSize:12,
@@ -480,7 +496,7 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
               borderBottom: subTab===key ? '2px solid #6a9955' : '2px solid transparent',
               fontWeight: subTab===key ? 600 : 400,
             }}>
-            {{powerOn:'Power-On Seq',deviceDesc:'Device Desc',reportDesc:'Report Desc',reportDataParser:'Report Data',liveSequence:'Live Sequence'}[key]}
+            {{powerOn:'Power-On Seq',deviceDesc:'Device Desc',reportDesc:'Report Desc',reportDataParser:'Report Data',liveSequence:'Live Sequence',hidDevice:'HID I²C'}[key]}
           </button>
         ))}
       </div>
@@ -589,6 +605,33 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
             liveSeqAnalyzerRef={liveSeqAnalyzerRef}
             liveSeqUnsubscribeRef={liveSeqUnsubscribeRef}
             liveSeqStartTimeRef={liveSeqStartTimeRef}
+          />
+        )}
+
+        {/* TAB 6: HID I²C Device */}
+        {subTab === 'hidDevice' && (
+          <HidDeviceTab
+            hidDeviceList={hidDeviceList}
+            setHidDeviceList={setHidDeviceList}
+            hidSelectedPath={hidSelectedPath}
+            setHidSelectedPath={setHidSelectedPath}
+            hidConnected={hidConnected}
+            setHidConnected={setHidConnected}
+            hidDeviceInfo={hidDeviceInfo}
+            setHidDeviceInfo={setHidDeviceInfo}
+            hidHidDescHex={hidHidDescHex}
+            setHidHidDescHex={setHidHidDescHex}
+            hidReportDescHex={hidReportDescHex}
+            setHidReportDescHex={setHidReportDescHex}
+            hidStatus={hidStatus}
+            setHidStatus={setHidStatus}
+            hidListening={hidListening}
+            setHidListening={setHidListening}
+            hidTick={hidTick}
+            setHidTick={setHidTick}
+            hidAnalyzerRef={hidAnalyzerRef}
+            hidUnsubscribeRef={hidUnsubscribeRef}
+            hidStartTimeRef={hidStartTimeRef}
           />
         )}
       </div>
@@ -1113,6 +1156,377 @@ const LiveSequenceTab: React.FC<LiveSequenceTabProps> = ({
           {totalRows === 0 && (
             <div style={{ padding: 20, textAlign: 'center', color: '#858585', fontStyle: 'italic' }}>
               {liveSeqListening ? 'Waiting for I²C frames...' : 'Load descriptors and click Start Listening to begin.'}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Tab 6: HID I²C Device — enumerate, connect, write/read HID devices ──
+
+interface HidDeviceTabProps {
+  hidDeviceList: any[];
+  setHidDeviceList: (v: any[]) => void;
+  hidSelectedPath: string;
+  setHidSelectedPath: (v: string) => void;
+  hidConnected: boolean;
+  setHidConnected: (v: boolean) => void;
+  hidDeviceInfo: string;
+  setHidDeviceInfo: (v: string) => void;
+  hidHidDescHex: string;
+  setHidHidDescHex: (v: string) => void;
+  hidReportDescHex: string;
+  setHidReportDescHex: (v: string) => void;
+  hidStatus: string;
+  setHidStatus: (v: string) => void;
+  hidListening: boolean;
+  setHidListening: (v: boolean) => void;
+  hidTick: number;
+  setHidTick: React.Dispatch<React.SetStateAction<number>>;
+  hidAnalyzerRef: React.MutableRefObject<LiveHidAnalyzer | null>;
+  hidUnsubscribeRef: React.MutableRefObject<(() => void) | null>;
+  hidStartTimeRef: React.MutableRefObject<number>;
+}
+
+const HidDeviceTab: React.FC<HidDeviceTabProps> = ({
+  hidDeviceList, setHidDeviceList,
+  hidSelectedPath, setHidSelectedPath,
+  hidConnected, setHidConnected,
+  hidDeviceInfo, setHidDeviceInfo,
+  hidHidDescHex, setHidHidDescHex,
+  hidReportDescHex, setHidReportDescHex,
+  hidStatus, setHidStatus,
+  hidListening, setHidListening,
+  hidTick, setHidTick,
+  hidAnalyzerRef, hidUnsubscribeRef, hidStartTimeRef,
+}) => {
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewH, setViewH] = useState(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+  // Command panel state
+  const [cmdType, setCmdType] = useState<'input' | 'output' | 'feature'>('input');
+  const [cmdReportId, setCmdReportId] = useState('0x04');
+  const [cmdPayload, setCmdPayload] = useState('');
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setViewH(el.clientHeight));
+    ro.observe(el);
+    setViewH(el.clientHeight);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [hidTick]);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setScrollTop(el.scrollTop);
+  }, []);
+
+  // Refresh device list
+  const handleRefresh = useCallback(async () => {
+    const list = await window.electronAPI.hidList?.() || [];
+    setHidDeviceList(list);
+    setHidStatus(`Found ${list.length} HID devices`);
+  }, []);
+
+  // Connect to selected device
+  const handleConnect = useCallback(async () => {
+    if (!hidSelectedPath) return;
+    const result = await window.electronAPI.hidOpen?.(hidSelectedPath);
+    if (result?.success) {
+      setHidConnected(true);
+      const dev = hidDeviceList.find((d: any) => d.path === hidSelectedPath);
+      const info = dev
+        ? `VID=0x${dev.vendorId.toString(16).toUpperCase().padStart(4, '0')} PID=0x${dev.productId.toString(16).toUpperCase().padStart(4, '0')} ${dev.product || ''}`
+        : '';
+      setHidDeviceInfo(info);
+      setHidStatus('Connected');
+      // Auto-fill HID descriptor if available
+      if (result.hidDesc && result.hidDesc.length > 0) {
+        const hexStr = result.hidDesc.map((b: number) => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+        setHidHidDescHex(hexStr);
+      }
+    } else {
+      setHidStatus(`Connect failed: ${result?.error}`);
+    }
+  }, [hidSelectedPath, hidDeviceList]);
+
+  // Disconnect
+  const handleDisconnect = useCallback(async () => {
+    await window.electronAPI.hidClose?.();
+    setHidConnected(false);
+    setHidDeviceInfo('');
+    setHidStatus('Disconnected');
+    // Stop listening if active
+    if (hidUnsubscribeRef.current) {
+      hidUnsubscribeRef.current();
+      hidUnsubscribeRef.current = null;
+    }
+    hidAnalyzerRef.current = null;
+    setHidListening(false);
+  }, []);
+
+  // Start listening for HID events via the i2c-raw-frame channel
+  const handleStartListening = useCallback(async () => {
+    if (!hidConnected) { setHidStatus('Connect to a device first'); return; }
+    const hidBytes = parseHexString(hidHidDescHex);
+    if (hidBytes.length < 30) { setHidStatus('Load HID descriptor first'); return; }
+    const reportBytes = parseHexString(hidReportDescHex);
+    if (reportBytes.length === 0) { setHidStatus('Load Report descriptor first'); return; }
+    const hidDesc = parseDescriptor(hidBytes);
+    if (!hidDesc) { setHidStatus('HID descriptor parse failed'); return; }
+    const items = parseReportDescriptor(reportBytes);
+    const fields = analyzeReportItems(items);
+    const analyzer = new LiveHidAnalyzer(0, 0);
+    analyzer.loadDescriptor(hidDesc, fields);
+    hidAnalyzerRef.current = analyzer;
+    hidStartTimeRef.current = Date.now();
+
+    const unsub = window.electronAPI.onI2cRawFrame?.((rawFrame) => {
+      if (rawFrame.source !== 'hid') return;
+      // Use i2cAddress=0 for first register which is the command register
+      const txn: I2cTransaction = {
+        lineNumber: 0,
+        timestamp: rawFrame.timestamp / 1000,
+        timeMs: rawFrame.timestamp - hidStartTimeRef.current,
+        address: rawFrame.i2cAddress,
+        isRead: rawFrame.isRead,
+        data: rawFrame.rawBytes,
+        rawLine: undefined,
+      };
+      analyzer.pushTransaction(txn);
+      setHidTick(t => t + 1);
+    });
+    hidUnsubscribeRef.current = unsub || null;
+    setHidListening(true);
+    setHidStatus('Listening: 0 events');
+  }, [hidConnected, hidHidDescHex, hidReportDescHex]);
+
+  // Stop listening
+  const handleStopListening = useCallback(() => {
+    setHidListening(false);
+    if (hidUnsubscribeRef.current) {
+      hidUnsubscribeRef.current();
+      hidUnsubscribeRef.current = null;
+    }
+    const a = hidAnalyzerRef.current;
+    if (a) setHidStatus(`Stopped: ${a.getEventCount()} events`);
+  }, []);
+
+  // Quick command: SET_POWER D0
+  const handleSetPowerD0 = useCallback(async () => {
+    await window.electronAPI.hidWrite?.(0, [0x00, 0x00, 0x08, 0x00]);
+    setHidStatus('SET_POWER D0 sent');
+  }, []);
+
+  // Quick command: SET_POWER D1
+  const handleSetPowerD1 = useCallback(async () => {
+    await window.electronAPI.hidWrite?.(0, [0x00, 0x00, 0x08, 0x01]);
+    setHidStatus('SET_POWER D1 sent');
+  }, []);
+
+  // Quick command: RESET
+  const handleReset = useCallback(async () => {
+    await window.electronAPI.hidWrite?.(0, [0x00, 0x00, 0x01, 0x00]);
+    setHidStatus('RESET sent');
+  }, []);
+
+  // GET_REPORT
+  const handleGetReport = useCallback(async () => {
+    const rid = parseInt(cmdReportId, 16);
+    if (isNaN(rid) || rid < 0 || rid > 255) { setHidStatus('Invalid Report ID'); return; }
+    const typeMap = { input: 0x01, output: 0x02, feature: 0x03 };
+    const cmdLowByte = (typeMap[cmdType] << 4) | (rid & 0x0F);
+    const extended = rid > 0x0F ? [rid] : [];
+    await window.electronAPI.hidWrite?.(0, [extended.length + 2, 0x00, cmdLowByte, 0x02, ...extended]);
+    setHidStatus(`GET_REPORT ${cmdType}#${cmdReportId} sent`);
+  }, [cmdType, cmdReportId]);
+
+  // SET_REPORT
+  const handleSetReport = useCallback(async () => {
+    const rid = parseInt(cmdReportId, 16);
+    if (isNaN(rid) || rid < 0 || rid > 255) { setHidStatus('Invalid Report ID'); return; }
+    const payloadHex = cmdPayload.replace(/\s+/g, '').trim();
+    let payload: number[] = [];
+    if (payloadHex) {
+      for (let i = 0; i < payloadHex.length; i += 2) {
+        payload.push(parseInt(payloadHex.substring(i, i + 2), 16));
+      }
+    }
+    const typeMap = { input: 0x01, output: 0x02, feature: 0x03 };
+    const cmdLowByte = (typeMap[cmdType] << 4) | (rid & 0x0F);
+    const extended = rid > 0x0F ? [rid] : [];
+    const data = [payload.length + extended.length + 2 + 1, 0x00, cmdLowByte, 0x03, ...extended, ...payload];
+    await window.electronAPI.hidWrite?.(0, data);
+    setHidStatus(`SET_REPORT ${cmdType}#${cmdReportId} sent (${payload.length}B payload)`);
+  }, [cmdType, cmdReportId, cmdPayload]);
+
+  // Save MD
+  const handleSaveMd = useCallback(() => {
+    const analyzer = hidAnalyzerRef.current;
+    if (!analyzer || analyzer.getEventCount() === 0) {
+      setHidStatus('No events to save');
+      return;
+    }
+    const result = liveSequenceEventsToResult(analyzer.getEvents(), null, [], []);
+    const md = generateSequenceMarkdown(result);
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    window.electronAPI.saveText?.(md, `hid-analyzer-${ts}.md`);
+    setHidStatus(`Saved MD: ${analyzer.getEventCount()} events`);
+  }, []);
+
+  // Save JSON
+  const handleSaveJson = useCallback(() => {
+    const analyzer = hidAnalyzerRef.current;
+    if (!analyzer || analyzer.getEventCount() === 0) {
+      setHidStatus('No events to save');
+      return;
+    }
+    const events = analyzer.getEvents();
+    const payload = {
+      version: 1, recordedAt: new Date().toISOString(),
+      eventCount: events.length,
+      events: events.map(e => ({
+        order: e.order, timestamp: e.timestamp, timeMs: e.timeMs,
+        direction: e.direction, eventType: e.eventType,
+        reportId: e.reportId,
+        description: e.description.replace(/<br>/g, '\n').replace(/<[^>]+>/g, ''),
+        rawHex: e.rawData.map((b: number) => '0x' + b.toString(16).toUpperCase().padStart(2, '0')).join(' '),
+      })),
+    };
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    window.electronAPI.saveText?.(JSON.stringify(payload, null, 2), `hid-analyzer-${ts}.json`);
+    setHidStatus(`Saved JSON: ${events.length} events`);
+  }, []);
+
+  const analyzer = hidAnalyzerRef.current;
+  const allEvents = analyzer ? analyzer.getEvents() : [];
+  const totalRows = allEvents.length;
+  const rowHeight = 22;
+  const bufferRows = 20;
+  const totalHeight = totalRows * rowHeight;
+  const startIdx = Math.max(0, Math.floor(scrollTop / rowHeight) - bufferRows);
+  const endIdx = Math.min(totalRows, Math.ceil((scrollTop + viewH) / rowHeight) + bufferRows);
+  const visibleEvents = useMemo(() => allEvents.slice(startIdx, endIdx), [allEvents, startIdx, endIdx]);
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Device panel */}
+      <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: 6, background: '#252526', borderBottom: '1px solid #3c3c3c', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button onClick={handleRefresh} style={{ padding: '4px 10px', borderRadius: 4, border: 'none', background: '#3c3c3c', color: '#d4d4d4', cursor: 'pointer', fontSize: 12 }}>Refresh Devices</button>
+          <select
+            value={hidSelectedPath}
+            onChange={e => setHidSelectedPath(e.target.value)}
+            style={{ flex: 1, minWidth: 200, background: '#3c3c3c', color: '#d4d4d4', border: 'none', padding: '4px 6px', borderRadius: 2, fontSize: 12, fontFamily: 'monospace' }}
+          >
+            <option value="">-- Select HID device --</option>
+            {hidDeviceList.map((d: any, i: number) => (
+              <option key={d.path ?? i} value={d.path}>
+                0x{d.vendorId.toString(16).padStart(4, '0')}:0x{d.productId.toString(16).padStart(4, '0')} {d.product || '(unknown)'}
+              </option>
+            ))}
+          </select>
+          <button onClick={handleConnect} disabled={!hidSelectedPath || hidConnected} style={{ padding: '4px 12px', borderRadius: 4, border: 'none', background: hidConnected ? '#5a5a5a' : '#6a9955', color: '#fff', cursor: hidConnected ? 'not-allowed' : 'pointer', fontSize: 12 }}>Connect</button>
+          <button onClick={handleDisconnect} disabled={!hidConnected} style={{ padding: '4px 12px', borderRadius: 4, border: 'none', background: !hidConnected ? '#5a5a5a' : '#f14c4c', color: '#fff', cursor: !hidConnected ? 'not-allowed' : 'pointer', fontSize: 12 }}>Disconnect</button>
+        </div>
+        <div style={{ fontSize: 11, color: '#858585' }}>{hidDeviceInfo}</div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <label style={{ fontSize: 12, color: '#d4d4d4' }}>HID Desc:</label>
+          <input value={hidHidDescHex} onChange={e => setHidHidDescHex(e.target.value)} placeholder="Paste 30 bytes or auto-loaded on connect" style={{ flex: 1, background: '#1e1e1e', color: '#d4d4d4', border: '1px solid #3c3c3c', padding: '2px 6px', borderRadius: 2, fontSize: 12, fontFamily: 'monospace' }} />
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <label style={{ fontSize: 12, color: '#d4d4d4' }}>Report Desc:</label>
+          <textarea value={hidReportDescHex} onChange={e => setHidReportDescHex(e.target.value)} placeholder="Paste HID Report Descriptor hex" style={{ flex: 1, height: 36, background: '#1e1e1e', color: '#d4d4d4', border: '1px solid #3c3c3c', padding: '2px 6px', borderRadius: 2, fontSize: 12, fontFamily: 'monospace', resize: 'vertical' }} />
+        </div>
+      </div>
+
+      {/* Command panel */}
+      <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: 6, background: '#1e1e1e', borderBottom: '1px solid #3c3c3c', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: '#569cd6', fontWeight: 600 }}>Commands:</span>
+          <button onClick={handleSetPowerD0} disabled={!hidConnected} style={{ padding: '3px 10px', borderRadius: 3, border: 'none', background: 'transparent', color: '#6a9955', cursor: hidConnected ? 'pointer' : 'not-allowed', fontSize: 11, border: '1px solid #6a9955' }}>SET_POWER D0</button>
+          <button onClick={handleSetPowerD1} disabled={!hidConnected} style={{ padding: '3px 10px', borderRadius: 3, border: 'none', background: 'transparent', color: '#6a9955', cursor: hidConnected ? 'pointer' : 'not-allowed', fontSize: 11, border: '1px solid #6a9955' }}>SET_POWER D1</button>
+          <button onClick={handleReset} disabled={!hidConnected} style={{ padding: '3px 10px', borderRadius: 3, border: 'none', background: 'transparent', color: '#f14c4c', cursor: hidConnected ? 'pointer' : 'not-allowed', fontSize: 11, border: '1px solid #f14c4c' }}>RESET</button>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <select value={cmdType} onChange={e => setCmdType(e.target.value as any)} style={{ background: '#3c3c3c', color: '#d4d4d4', border: 'none', padding: '2px 6px', borderRadius: 2, fontSize: 12 }}>
+            <option value="input">Input</option>
+            <option value="output">Output</option>
+            <option value="feature">Feature</option>
+          </select>
+          <span style={{ fontSize: 12, color: '#d4d4d4' }}>Report ID:</span>
+          <input value={cmdReportId} onChange={e => setCmdReportId(e.target.value)} style={{ width: 50, background: '#3c3c3c', color: '#d4d4d4', border: 'none', padding: '2px 4px', borderRadius: 2, fontSize: 12 }} />
+          <button onClick={handleGetReport} disabled={!hidConnected} style={{ padding: '3px 10px', borderRadius: 3, border: 'none', background: '#6a9955', color: '#fff', cursor: hidConnected ? 'pointer' : 'not-allowed', fontSize: 12 }}>GET_REPORT</button>
+          <span style={{ fontSize: 12, color: '#d4d4d4' }}>Payload hex:</span>
+          <input value={cmdPayload} onChange={e => setCmdPayload(e.target.value)} placeholder="e.g. 00 01 02" style={{ width: 150, background: '#3c3c3c', color: '#d4d4d4', border: 'none', padding: '2px 4px', borderRadius: 2, fontSize: 12, fontFamily: 'monospace' }} />
+          <button onClick={handleSetReport} disabled={!hidConnected} style={{ padding: '3px 10px', borderRadius: 3, border: 'none', background: '#6a9955', color: '#fff', cursor: hidConnected ? 'pointer' : 'not-allowed', fontSize: 12 }}>SET_REPORT</button>
+        </div>
+      </div>
+
+      {/* Listen controls */}
+      <div style={{ padding: '8px', display: 'flex', gap: 8, alignItems: 'center', background: '#1e1e1e', borderBottom: '1px solid #3c3c3c', flexShrink: 0 }}>
+        <button
+          onClick={hidListening ? handleStopListening : handleStartListening}
+          style={{ padding: '4px 14px', borderRadius: 4, border: 'none', background: hidListening ? '#f14c4c' : '#6a9955', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
+        >
+          {hidListening ? 'Stop Listening' : 'Start Listening'}
+        </button>
+        <button onClick={handleSaveMd} style={{ padding: '4px 12px', borderRadius: 4, border: 'none', background: '#3c3c3c', color: '#d4d4d4', cursor: 'pointer', fontSize: 12 }}>Save MD</button>
+        <button onClick={handleSaveJson} style={{ padding: '4px 12px', borderRadius: 4, border: 'none', background: '#3c3c3c', color: '#d4d4d4', cursor: 'pointer', fontSize: 12 }}>Save JSON</button>
+        <span style={{ fontSize: 11, color: '#6a9955' }}>{hidStatus}</span>
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: hidListening ? '#6a9955' : '#858585' }}>
+          {hidConnected ? '● Connected' : '○ Disconnected'} | {hidListening ? '● LIVE' : '○ idle'} | {totalRows} events
+        </span>
+      </div>
+
+      {/* Events table — virtualized */}
+      <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, overflow: 'auto', background: '#1e1e1e' }}>
+        <div style={{ position: 'sticky', top: 0, zIndex: 2, background: '#252526', display: 'flex', alignItems: 'center', padding: '4px 8px', borderBottom: '1px solid #3c3c3c', fontSize: 11, color: '#858585' }}>
+          <span style={{ color: '#6a9955', fontWeight: 600 }}>Total: {totalRows} events</span>
+          <span style={{ marginLeft: 12 }}>{totalRows > 0 ? `Showing rows ${startIdx + 1}-${endIdx}` : '(empty)'}</span>
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'monospace', fontSize: 11, tableLayout: 'fixed' }}>
+          <colgroup><col style={{ width: 40 }} /><col style={{ width: 90 }} /><col style={{ width: 110 }} /><col style={{ width: 170 }} /><col style={{ width: 60 }} /><col /></colgroup>
+          <thead>
+            <tr>
+              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955' }}>#</th>
+              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955' }}>Time (s)</th>
+              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955' }}>Direction</th>
+              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955' }}>Event Type</th>
+              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955' }}>ReportID</th>
+              <th style={{ border: '1px solid #3c3c3c', padding: '4px 8px', textAlign: 'left', color: '#6a9955' }}>Description</th>
+            </tr>
+          </thead>
+        </table>
+        <div ref={innerRef} style={{ position: 'relative', height: totalHeight }}>
+          <table style={{ position: 'absolute', top: startIdx * rowHeight, left: 0, right: 0, borderCollapse: 'collapse', fontFamily: 'monospace', fontSize: 11, tableLayout: 'fixed' }}>
+            <colgroup><col style={{ width: 40 }} /><col style={{ width: 90 }} /><col style={{ width: 110 }} /><col style={{ width: 170 }} /><col style={{ width: 60 }} /><col /></colgroup>
+            <tbody>
+              {visibleEvents.map((evt) => (
+                <tr key={evt.order} style={{ background: evt.order % 2 === 0 ? '#1e1e1e' : '#252526', height: rowHeight }}>
+                  <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: '#858585' }}>{evt.order}</td>
+                  <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: '#d4d4d4' }}>{evt.timestamp.toFixed(3)}</td>
+                  <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: evt.direction.includes('←') ? '#ce9178' : '#569cd6' }}>{evt.direction}</td>
+                  <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: '#d4d4d4', fontWeight: 600 }}>{evt.eventType}</td>
+                  <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: '#ce9178' }}>{evt.reportId || '-'}</td>
+                  <td style={{ border: '1px solid #3c3c3c', padding: '2px 6px', color: '#d4d4d4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} dangerouslySetInnerHTML={{ __html: evt.description }} />
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {totalRows === 0 && (
+            <div style={{ padding: 20, textAlign: 'center', color: '#858585', fontStyle: 'italic' }}>
+              {hidListening ? 'Waiting for HID events...' : 'Connect to a device and click Start Listening.'}
             </div>
           )}
         </div>
