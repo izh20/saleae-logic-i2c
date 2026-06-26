@@ -551,7 +551,7 @@ const App: React.FC = () => {
                   </tr>
                   <tr>
                     <td style={{ paddingRight: 12, color: '#6a9955', whiteSpace: 'nowrap' }}>HID Analysis</td>
-                    <td>5 个子 Tab：Power-On Seq / Device Desc / Report Desc / Report Data / Live Sequence</td>
+                    <td>6 个子 Tab：Power-On Seq / Device Desc / Report Desc / Report Data / Live Sequence / HID I²C</td>
                   </tr>
                 </tbody>
               </table>
@@ -608,7 +608,7 @@ const App: React.FC = () => {
 
             {/* ── HID Analysis 子 Tab ── */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>HID Analysis · 5 个子 Tab</div>
+              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>HID Analysis · 6 个子 Tab</div>
               <table style={{ width: '100%' }}>
                 <tbody>
                   <tr>
@@ -652,6 +652,15 @@ const App: React.FC = () => {
                       实时显示 9 种 eventType：Read HID Descriptor / Send Command（opcode 全解码）
                       / Get Report Response（字段级 payload）/ Input Report / Output Report 等。
                       表格无 events 上限（持续追加）；用 <span style={{ color: '#6a9955' }}>Save MD</span> / <span style={{ color: '#6a9955' }}>Save JSON</span> 导出当前累积后 <span style={{ color: '#6a9955' }}>Clear</span> 清空。
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ paddingRight: 12, color: '#ce9178', whiteSpace: 'nowrap', verticalAlign: 'top' }}>HID I²C</td>
+                    <td>
+                      Windows 上枚举所有 HID 设备 → 选择 → Connect → 自动/手动加载
+                      HID Device Desc + Report Desc → 通过命令面板发 SET_POWER / RESET /
+                      GET_REPORT / SET_REPORT 等 HID 报告 → 字节流实时分析（<span style={{ color: '#6a9955' }}>复用 Live Sequence</span>
+                      的事件分发管线）。需要 <span style={{ color: '#6a9955' }}>node-hid</span> native 模块（Windows 上 rebuild 一次）。
                     </td>
                   </tr>
                 </tbody>

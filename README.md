@@ -110,7 +110,7 @@ cp -r i2c_hla ~/Library/Application\ Support/SaleaeLogic/Extensions/
 | **Playback** | 录制文件 / Saleae 导出 | 单帧回放 + 撤销 / 快照 |
 | **Frame List** | 实时累加 / 录制 | 列出每帧 scantime、finger、stylus、pkt |
 | **Debug** | 实时 / 录制 | 解析 stylus 包 bytes[15..46] 的 16 个 s16 通道 |
-| **HID Analysis** | 文本粘贴 / 实时帧 | 协议层分析（5 个子 Tab，详见下文） |
+| **HID Analysis** | 文本粘贴 / 实时帧 / 设备控制 | 协议层分析（6 个子 Tab，详见下文） |
 
 ### Live — 实时轨迹
 
@@ -154,7 +154,7 @@ cp -r i2c_hla ~/Library/Application\ Support/SaleaeLogic/Extensions/
 
 ### HID Analysis — 协议分析
 
-[src/components/HidAnalysisView.tsx](touchpad-tracker/src/components/HidAnalysisView.tsx) 提供 5 个子 Tab，是整个项目最复杂的纯逻辑分析模块：
+[src/components/HidAnalysisView.tsx](touchpad-tracker/src/components/HidAnalysisView.tsx) 提供 6 个子 Tab，是整个项目最复杂的纯逻辑分析模块：
 
 #### Tab 1 · Power-On Seq
 
@@ -199,6 +199,26 @@ cp -r i2c_hla ~/Library/Application\ Support/SaleaeLogic/Extensions/
 - **Save JSON** — 导出为机器可读 JSON（含 `version` / `recordedAt` / `deviceAddress` / `hidDescRegister` / `hidDescriptor` / `eventCount` / `events[]`），便于二次分析
 - **架构核心**：`LiveHidAnalyzer` 类（[HidI2cSequenceAnalyzer.ts](touchpad-tracker/src/hid/HidI2cSequenceAnalyzer.ts)）持有 hidDescriptor / reportFields / pendingRead / order / events 状态，每次 push 一条 I²C 事务返回 0+ 新事件。`processSingleTransaction` 是 batch 与 live 共享的公共函数——Live Sequence 与 Power-On Seq **逻辑 100% 等价**（parity 验证：840 events 全等）。
 - 区别于 Power-On Seq：用户**手动**输入两份 descriptor，不做自动探测；Get Report Response 在 live 模式下用 `pendingRead='get_report_*'` 弱配对（无法预知 host 下一个 GET_REPORT 的 Report ID），orphan response 按通用 Input Report 降级
+
+#### Tab 6 · HID I²C Device
+
+Windows 上枚举所有 HID 设备 → 选择 → Connect → 自动/手动加载 HID Device Desc (30B) + HID Report Desc → 通过命令面板发送 HID 报告命令：SET_POWER D0/D1、RESET、GET_REPORT、SET_REPORT（支持 Input/Output/Feature 三种类型 + 自定义 payload hex）。
+
+命令字节流通过现有 `i2c-raw-frame` IPC 通道（`source='hid'`）发出，由 `LiveHidAnalyzer` 增量分析为事件，**复用 Live Sequence 的虚拟滚动表格、强制 auto-scroll、Save MD / Save JSON**。
+
+**架构**：
+- `node-hid@3.3.0` native module（Windows / macOS / Linux prebuild 全部包含）
+- 主进程 6 个 IPC handler：`hid-list` / `hid-open`（含 `getFeatureReport` 自动读 HID Desc）/ `hid-close` / `hid-write`（同时转发字节流到 `i2c-raw-frame`，`source='hid'`）/ `hid-read-feature` / `hid-descriptors`
+- deps 配 `@electron/rebuild`，`forge.config.ts rebuildConfig.onlyModules: ['node-hid']`
+
+**适用范围**：Windows only。标准 HID-over-I²C 设备（VID=0x03EB, UsagePage=0x0001, Usage=0x0006），HID 报告级操作（GET_REPORT / SET_REPORT / OUTPUT / FEATURE）。不适用于 USB-I²C 适配器字节级操作。
+
+**跨 Tab 安全**：
+- 独立的 `LiveHidAnalyzer` 实例，独立 `i2c-raw-frame` 订阅（`source === 'hid'` 过滤）
+- 独立的 localStorage 键空间（`tab6:*`，存 HID Desc + Report Desc hex）
+- 不影响 TrajectoryView / PlaybackView / Frame List / Debug / 录制等 5 个现有组件
+- 不影响 5 个现有 HID Analysis Tab
+- Tab 4 / Tab 5 的 `i2cAddress` 过滤逻辑已对 `source='hid'` 跳过
 
 ---
 
