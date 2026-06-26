@@ -52,4 +52,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveText: (data: string, defaultName: string): Promise<string | null> => {
     return ipcRenderer.invoke('save-text', data, defaultName);
   },
+
+  // ── HID I²C Device API ──
+  hidList: (): Promise<any[]> => {
+    return ipcRenderer.invoke('hid-list');
+  },
+  hidOpen: (path: string): Promise<{ success: boolean; error?: string; hidDesc?: number[]; reportDesc?: number[] }> => {
+    return ipcRenderer.invoke('hid-open', path);
+  },
+  hidClose: (): Promise<{ success: boolean; error?: string }> => {
+    return ipcRenderer.invoke('hid-close');
+  },
+  hidWrite: (reportId: number, data: number[]): Promise<{ success: boolean; error?: string; sentBytes: number }> => {
+    return ipcRenderer.invoke('hid-write', reportId, data);
+  },
+  hidReadFeature: (reportId: number): Promise<{ data?: number[]; error?: string }> => {
+    return ipcRenderer.invoke('hid-read-feature', reportId);
+  },
+  hidDescriptors: (): Promise<{ hidDesc: number[]; reportDesc: number[] }> => {
+    return ipcRenderer.invoke('hid-descriptors');
+  },
 });
