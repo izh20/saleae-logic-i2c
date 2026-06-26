@@ -195,6 +195,7 @@ function startUdpServer() {
             timestamp,
             i2cAddress: i2cAddressNum,
             isRead,
+            source: 'udp',
             register,
             rawBytes: parsedBytes,
           });

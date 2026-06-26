@@ -18,8 +18,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Report Data Parser to parse arbitrary reports, not just finger / stylus,
   // and by the Live Sequence subTab to drive incremental HID-over-I²C
   // protocol analysis.
-  onI2cRawFrame: (callback: (frame: { timestamp: number; i2cAddress: number; isRead: boolean; register: number | null; rawBytes: number[] }) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, frame: { timestamp: number; i2cAddress: number; isRead: boolean; register: number | null; rawBytes: number[] }) => {
+  onI2cRawFrame: (callback: (frame: { timestamp: number; i2cAddress: number; isRead: boolean; register: number | null; rawBytes: number[]; source: 'udp' | 'hid' }) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, frame: { timestamp: number; i2cAddress: number; isRead: boolean; register: number | null; rawBytes: number[]; source: 'udp' | 'hid' }) => {
       callback(frame);
     };
     ipcRenderer.on('i2c-raw-frame', listener);

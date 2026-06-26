@@ -1,11 +1,14 @@
 import { FingerFrame, TouchpadConfig } from './finger';
 
+export type I2cRawSource = 'udp' | 'hid';
+
 export interface I2cRawFrame {
   timestamp: number;
   i2cAddress: number;
   isRead: boolean;
   register: number | null;
   rawBytes: number[];
+  source: I2cRawSource;
 }
 
 export interface ElectronAPI {

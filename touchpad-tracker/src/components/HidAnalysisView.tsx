@@ -700,7 +700,8 @@ const ReportDataParserTab: React.FC<{
     // is decided by parseSingleFrame against the loaded descriptor fields.
     const unsub = window.electronAPI.onI2cRawFrame?.((rawFrame) => {
       if (!rawFrame.rawBytes || rawFrame.rawBytes.length === 0) return;
-      if (addrFilter !== null && rawFrame.i2cAddress !== addrFilter) return;
+      // HID-origin frames have no real I²C address; skip the addr filter for them.
+      if (rawFrame.source !== 'hid' && addrFilter !== null && rawFrame.i2cAddress !== addrFilter) return;
       const rawHex = rawFrame.rawBytes.map(b => '0x' + b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
       const fields2 = listeningFieldsRef.current; if (fields2.length === 0) return;
       // hasLenPrefix state controls the 2-byte HID-I²C length prefix
@@ -871,7 +872,7 @@ const LiveSequenceTab: React.FC<LiveSequenceTabProps> = ({
       liveSeqStartTimeRef.current = Date.now();
 
       const unsub = window.electronAPI.onI2cRawFrame?.((rawFrame) => {
-        if (rawFrame.i2cAddress !== addr) return;
+        if (rawFrame.source !== 'hid' && rawFrame.i2cAddress !== addr) return;
         const txn: I2cTransaction = {
           lineNumber: 0,
           timestamp: rawFrame.timestamp / 1000,
