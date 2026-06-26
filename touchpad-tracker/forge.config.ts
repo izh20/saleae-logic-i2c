@@ -15,7 +15,13 @@ const config: ForgeConfig = {
     // 在项目中放置路径： touchpad-tracker/assets/icon.icns 等
     icon: 'assets/icon',
   },
-  rebuildConfig: {},
+  rebuildConfig: {
+    // Native modules that need to be rebuilt against the Electron Node ABI
+    // during `electron-forge start` / `make`. node-hid is required by the
+    // HID I²C Device subTab to enumerate and communicate with HID devices
+    // (e.g. touchpad, sensor) via the HID 1.11 / HID-over-I²C protocol.
+    onlyModules: ['node-hid'],
+  },
   hooks: {
     packageAfterCopy: require('./scripts/cleanup-hook.js'),
   },
