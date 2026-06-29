@@ -305,7 +305,7 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
   const [reportDataInput, setReportDataInput] = useState(() => loadStoredString('tab4:reportDataInput', ''));
   const [reportDataDescHex, setReportDataDescHex] = useState(() => loadStoredString('tab4:reportDataDescHex', ''));
   const [reportDataHtml, setReportDataHtml] = useState('');
-  const [hasLenPrefix, setHasLenPrefix] = useState(() => loadStoredBool('tab4:hasLenPrefix', false));
+  const [hasLenPrefix, setHasLenPrefix] = useState(() => loadStoredBool('tab4:hasLenPrefix', true));
   const [reportDataAddrFilter, setReportDataAddrFilter] = useState(() => loadStoredString('tab4:reportDataAddrFilter', ''));
   const [reportDataDescStatus, setReportDataDescStatus] = useState('');
 
