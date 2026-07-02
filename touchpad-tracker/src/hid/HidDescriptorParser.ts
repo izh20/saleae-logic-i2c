@@ -177,9 +177,13 @@ export function formatCommentedHex(bytes: number[]): string {
       (item.dataSize === 4 ? 3 : item.dataSize) |
       (item.tag << 4));
     const prefixHex = '0x' + prefixByte.toString(16).toUpperCase().padStart(2, '0');
-    const fullHex = hex ? `${prefixHex}, ${hex}` : prefixHex;
+    // Always end with a trailing comma so the formatted output can be
+    // pasted directly into a C array initializer (e.g.
+    //   uint8_t desc[] = { 0x05, 0x01, 0x09, 0x02, ... };
+    // ) without reformatting. Comments stay inline.
+    const fullHex = hex ? `${prefixHex}, ${hex},` : `${prefixHex},`;
     const desc = getItemDescription(item);
-    result += `${'  '.repeat(indent)}${fullHex.padEnd(30)} // ${desc}\n`;
+    result += `${'  '.repeat(indent)}${fullHex.padEnd(32)} // ${desc}\n`;
     if (item.tag === MainItemTag.Collection) {
       indent++;
     }

@@ -431,7 +431,7 @@ const HidAnalysisView: React.FC<HidAnalysisViewProps> = ({ i2cAddress = 0x2C }) 
       if (bytes.length === 0) return;
       const newMode = !commentMode;
       setCommentMode(newMode);
-      setReportDescHex(newMode ? formatCommentedHex(bytes) : bytes.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' '));
+      setReportDescHex(newMode ? formatCommentedHex(bytes) : bytes.map(b => '0x' + b.toString(16).toUpperCase().padStart(2, '0')).join(', '));
     } catch { /* ignore */ }
   }, [reportDescHex, commentMode]);
 
