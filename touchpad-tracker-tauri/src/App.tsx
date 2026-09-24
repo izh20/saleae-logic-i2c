@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
+import type { DownloadEvent } from '@tauri-apps/plugin-updater';
 import TrajectoryView from './components/TrajectoryView';
 import PlaybackView from './components/PlaybackView';
 import PlaybackControls from './components/PlaybackControls';
@@ -10,6 +11,7 @@ import { TouchpadConfig, DEFAULT_CONFIG, FingerFrame } from './types/finger';
 import { useRecorder } from './hooks/useRecorder';
 import { usePlayer, PlaybackSpeed } from './hooks/usePlayer';
 import { parseSaleaeCSV } from './utils/parseSaleaeTXT';
+import { checkForUpdate, installAndRestart, type UpdateInfo } from './updater';
 
 const App: React.FC = () => {
   type ViewMode = 'live' | 'playback' | 'frameList' | 'debug' | 'hidAnalysis';
@@ -25,6 +27,9 @@ const App: React.FC = () => {
   const [showHelp, setShowHelp] = useState(false);
   const [recordingMessage, setRecordingMessage] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState('');
+  const [availableUpdate, setAvailableUpdate] = useState<UpdateInfo | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'downloading' | 'installing' | 'error'>('idle');
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
   // Force re-render for live frame list
   const [liveFrameCount, setLiveFrameCount] = useState(0);
   // Frame list accumulation state
@@ -72,6 +77,11 @@ const App: React.FC = () => {
     getVersion().then(setAppVersion).catch(error => {
       console.warn('Unable to read app version:', error);
     });
+  }, []);
+  useEffect(() => {
+    checkForUpdate()
+      .then(setAvailableUpdate)
+      .catch(error => console.warn('Unable to check for updates on startup:', error));
   }, []);
   useEffect(() => {
     // Track previous mode for back button (frameList, debug, hidAnalysis have back behavior)
@@ -265,6 +275,40 @@ const App: React.FC = () => {
     }
   };
 
+  const handleCheckForUpdate = async () => {
+    setUpdateStatus('checking');
+    setUpdateMessage(null);
+    try {
+      const update = await checkForUpdate();
+      setAvailableUpdate(update);
+      setUpdateMessage(update ? `发现 v${update.version}` : `已是最新 v${appVersion || '当前版本'}`);
+      setUpdateStatus('idle');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setUpdateMessage(`检查更新失败：${message}`);
+      setUpdateStatus('error');
+    }
+  };
+
+  const handleInstallUpdate = async () => {
+    if (!availableUpdate) return;
+    setUpdateStatus('downloading');
+    setUpdateMessage(`正在下载 v${availableUpdate.version}...`);
+    const onProgress = (event: DownloadEvent) => {
+      if (event.event === 'Finished') {
+        setUpdateStatus('installing');
+        setUpdateMessage('正在安装并重启...');
+      }
+    };
+    try {
+      await installAndRestart(availableUpdate, onProgress);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setUpdateMessage(`更新失败：${message}`);
+      setUpdateStatus('error');
+    }
+  };
+
   return (
     <div
       style={{
@@ -428,6 +472,25 @@ const App: React.FC = () => {
         </div>
       </header>
 
+      {availableUpdate && (
+        <div
+          role="status"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+            padding: '8px 16px', background: '#1f3a2b', borderBottom: '1px solid #3c6e47', fontSize: 12,
+          }}
+        >
+          <span>发现 v{availableUpdate.version}，下载并安装后将重启应用。</span>
+          <button
+            onClick={handleInstallUpdate}
+            disabled={updateStatus === 'downloading' || updateStatus === 'installing'}
+            style={{ padding: '4px 10px', border: 'none', borderRadius: 4, background: '#6a9955', color: '#fff', cursor: 'pointer' }}
+          >
+            {updateStatus === 'downloading' ? '下载中...' : updateStatus === 'installing' ? '安装中...' : '立即更新'}
+          </button>
+        </div>
+      )}
+
       {/* Main content */}
       <main style={{ flex: 1, overflow: 'hidden' }}>
         {viewMode === 'playback' && (
@@ -561,6 +624,20 @@ const App: React.FC = () => {
             </div>
             <div style={{ color: '#858585', fontSize: 12, marginBottom: 16 }}>
               Saleae Logic Pro 16 → I²C → HID 触摸板协议分析工具
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>更新</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  onClick={handleCheckForUpdate}
+                  disabled={updateStatus === 'checking'}
+                  style={{ padding: '4px 10px', border: 'none', borderRadius: 4, background: '#3c3c3c', color: '#d4d4d4', cursor: 'pointer' }}
+                >
+                  {updateStatus === 'checking' ? '检查中...' : '检查更新'}
+                </button>
+                {updateMessage && <span style={{ color: updateStatus === 'error' ? '#f48771' : '#bbbbbb' }}>{updateMessage}</span>}
+              </div>
             </div>
 
             {/* ── 快捷键 ── */}

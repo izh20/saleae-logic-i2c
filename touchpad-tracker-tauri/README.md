@@ -21,8 +21,26 @@ npm test
 npm run tauri dev
 ```
 
-生产构建使用 `npm run tauri build`。Rust 单元测试可通过
+生产构建使用 `npm run tauri build`。启用自动更新后，生产构建还需要
+`TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。Rust 单元测试可通过
 `cargo test --manifest-path src-tauri/Cargo.toml` 运行。
+
+## 自动更新
+
+v0.1.2 是自动更新引导版本，必须手动安装。后续版本会在启动时静默检查，也可在
+Help 面板中手动检查。升级包均由 Tauri 签名校验；校验失败时旧版本继续运行。
+
+首次发布前，在本机交互式生成并妥善保存私钥，然后将公钥写入 Tauri 配置：
+
+```bash
+mkdir -p ~/.tauri/keys
+npm exec tauri -- signer generate --write-keys ~/.tauri/keys/touchpad-tracker.key
+npm run configure:update-key -- ~/.tauri/keys/touchpad-tracker.key.pub
+```
+
+命令会提示输入私钥密码。不要提交私钥；将私钥和密码分别保存为 GitHub Actions 的
+`TAURI_SIGNING_PRIVATE_KEY`、`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets。公钥写入
+`src-tauri/tauri.conf.json` 后可安全提交。
 
 ## 版本管理
 
@@ -54,9 +72,9 @@ Windows 和 Linux 安装包。仓库中的
 
 | 平台 | Runner | 发布产物 |
 |------|--------|----------|
-| macOS | `macos-14` | `.dmg` |
-| Windows | `windows-latest` | `.msi`、NSIS `.exe` |
-| Linux | `ubuntu-22.04` | `.AppImage`、`.deb`、`.rpm` |
+| macOS | `macos-14` | `.dmg`、签名 `.app.tar.gz` updater |
+| Windows | `windows-latest` | 签名 NSIS `.exe` updater |
+| Linux | `ubuntu-22.04` | 签名 `.AppImage` updater |
 
 在 GitHub 的 **Actions → Tauri Cross-Platform Release → Run workflow** 中可手动
 构建当前版本，产物会保留 30 天。正式发布流程：
@@ -70,7 +88,8 @@ git push origin main v0.2.0
 ```
 
 标签必须与 `package.json` 版本完全一致。三个平台构建全部成功后，CI 会创建
-GitHub Release 并附上所有安装包。
+GitHub Release 并附上安装包、签名 updater 产物和 `latest.json`。Windows 仅发布 NSIS，
+Linux 仅发布 AppImage，以保证静态 updater manifest 对每个目标只有一种安装格式。
 
 本地构建 Windows 版需要 Node.js 22、Rust stable、Microsoft C++ Build Tools 和
 WebView2；进入项目目录后运行 `npm ci && npm run tauri build`。

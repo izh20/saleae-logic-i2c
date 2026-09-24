@@ -24,6 +24,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "icon": [
       "icons/32x32.png",
@@ -32,5 +33,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/izh20/saleae-logic-i2c/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU3MkY3MzExODM4ODY2M0MKUldROFpvaURFWE12VjA4dDNCamVtYkJLSXN0eGxoU2hMSlpzTHd4aWx4TDdCU2M4aXRVL2RKMEEK"
+    }
   }
 }
