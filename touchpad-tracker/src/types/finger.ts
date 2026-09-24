@@ -26,7 +26,8 @@ export interface FingerSlot {
 // Complete finger frame from HID packet
 export interface FingerFrame {
   timestamp: number;
-  packetType: 47 | 32;
+  // 整包字节数：47 / 32 / 42 / 52 / ... 由匹配到的 CoordinateFormat.totalLength 决定
+  packetType: number;
   slots: FingerSlot[];
   fingerCount: number;
   scantime: number;

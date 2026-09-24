@@ -1,4 +1,5 @@
-import { FingerFrame, FingerSlot, StylusSlot, StylusState } from '../types/finger';
+import { FingerFrame, StylusSlot, StylusState } from '../types/finger';
+import { matchFormat, tryParseFingerFrame } from '../hid/coordinateParser';
 
 // Parse hex string to number (supports both hex and decimal)
 function parseHexOrDec(val: string): number {
@@ -32,79 +33,11 @@ export const parseSaleaeCSV = Object.assign(
   addressManager
 );
 
-// Parse I2C data array to finger frame
+// Parse I2C data array to finger frame（自动嗅探内置 CoordinateFormat）
 function parseFingerFrameFromData(data: string[], timestamp: number): FingerFrame | null {
-  if (data.length < 3) return null;
-
-  // Parse first 3 bytes for header
-  const byte0 = parseHexOrDec(data[0]);
-  const byte1 = parseHexOrDec(data[1]);
-  const byte2 = parseHexOrDec(data[2]);
-
-  // Check for finger packet header
-  const is47Byte = byte0 === 0x2F && byte1 === 0x00 && byte2 === 0x04;
-  const is32Byte = byte0 === 0x20 && byte1 === 0x00 && byte2 === 0x04;
-
-  if (!is47Byte && !is32Byte) return null;
-
-  const packetType: 47 | 32 = is47Byte ? 47 : 32;
-  const slotSize = packetType === 47 ? 8 : 5;
-  const dataLen = is47Byte ? 47 : 32;
-
-  if (data.length < dataLen) return null;
-
-  const slots: FingerSlot[] = [];
-
-  // Parse 5 finger slots starting at byte 3
-  for (let i = 0; i < 5; i++) {
-    const offset = 3 + i * slotSize;
-    if (offset >= dataLen) break;
-
-    const fingerStatus = parseHexOrDec(data[offset]);
-    const fingerId = (fingerStatus >> 4) & 0x0F;
-    const state = fingerStatus & 0x0F;
-
-    const xLow = parseHexOrDec(data[offset + 1]);
-    const xHigh = parseHexOrDec(data[offset + 2]);
-    const yLow = parseHexOrDec(data[offset + 3]);
-    const yHigh = parseHexOrDec(data[offset + 4]);
-
-    const x = xLow | (xHigh << 8);
-    const y = yLow | (yHigh << 8);
-
-    const slot: FingerSlot = {
-      fingerId,
-      state,
-      x,
-      y,
-    };
-
-    // Add extra fields for 47-byte format
-    if (packetType === 47 && offset + 7 < dataLen) {
-      slot.length = parseHexOrDec(data[offset + 5]);
-      slot.width = parseHexOrDec(data[offset + 6]);
-      slot.pressure = parseHexOrDec(data[offset + 7]);
-    }
-
-    slots.push(slot);
-  }
-
-  // Parse packet metadata
-  const metaOffset = packetType === 47 ? 43 : 28;
-  const scantimeLow = parseHexOrDec(data[metaOffset]);
-  const scantimeHigh = parseHexOrDec(data[metaOffset + 1]);
-  const scantime = scantimeLow | (scantimeHigh << 8);
-  const fingerCount = parseHexOrDec(data[metaOffset + 2]);
-  const keyState = parseHexOrDec(data[metaOffset + 3]);
-
-  return {
-    timestamp,
-    packetType,
-    slots,
-    fingerCount,
-    scantime,
-    keyState,
-  };
+  const bytes = data.map(parseHexOrDec);
+  const result = tryParseFingerFrame(bytes, timestamp);
+  return result ? result.frame : null;
 }
 
 // Parse bytes[15..46] as 16 s16 little-endian debug values.
@@ -217,21 +150,20 @@ function parseSaleaeCSVInternal(content: string, supportedAddrs: number[]): Fing
   let frameIndex = 0;
   let stylusCount = 0;
   let fingerCount = 0;
-  while (i < allData.length - 3) {
+  while (i < allData.length - 2) {
     const byte0 = parseHexOrDec(allData[i]);
     const byte1 = parseHexOrDec(allData[i + 1]);
     const byte2 = parseHexOrDec(allData[i + 2]);
 
-    // Check for stylus packet first (0x2F 0x00 0x08)
+    // Stylus packet first (0x2F 0x00 0x08) — 不在 BUILTIN_FORMATS 中
     const isStylus = byte0 === 0x2F && byte1 === 0x00 && byte2 === 0x08;
 
-    // Check for finger packets
-    const is47Byte = byte0 === 0x2F && byte1 === 0x00 && byte2 === 0x04;
-    const is32Byte = byte0 === 0x20 && byte1 === 0x00 && byte2 === 0x04;
+    // 自动嗅探手指包 format（tp47/tp32/tp2a/tp34 中匹配的第一个）
+    const fingerFmt = matchFormat([byte0, byte1, byte2]);
 
     // Debug: log first few header detections
-    if (frameIndex < 5 && (isStylus || is47Byte || is32Byte)) {
-      console.log(`parseSaleaeCSV: byte[${i}]=${byte0.toString(16)}, byte[${i+1}]=${byte1.toString(16)}, byte[${i+2}]=${byte2.toString(16)} - isStylus=${isStylus}, is47Byte=${is47Byte}, is32Byte=${is32Byte}`);
+    if (frameIndex < 5 && (isStylus || fingerFmt)) {
+      console.log(`parseSaleaeCSV: byte[${i}]=${byte0.toString(16)}, byte[${i+1}]=${byte1.toString(16)}, byte[${i+2}]=${byte2.toString(16)} - isStylus=${isStylus}, fingerFmt=${fingerFmt?.id ?? 'none'}`);
     }
 
     if (isStylus) {
@@ -254,9 +186,8 @@ function parseSaleaeCSVInternal(content: string, supportedAddrs: number[]): Fing
       } else {
         i++;
       }
-    } else if (is47Byte || is32Byte) {
-      const packetType: 47 | 32 = is47Byte ? 47 : 32;
-      const frameLen = packetType;
+    } else if (fingerFmt) {
+      const frameLen = fingerFmt.totalLength;
       const endIdx = i + frameLen;
 
       if (endIdx <= allData.length) {
@@ -267,7 +198,7 @@ function parseSaleaeCSVInternal(content: string, supportedAddrs: number[]): Fing
         if (frame) {
           frames.push(frame);
           fingerCount++;
-          console.log(`parseSaleaeCSV: parsed frame ${frameIndex} at byte ${i}, type ${packetType}, fingerCount: ${frame.fingerCount}`);
+          console.log(`parseSaleaeCSV: parsed frame ${frameIndex} at byte ${i}, format=${fingerFmt.id} (${frameLen}B), fingerCount: ${frame.fingerCount}`);
         }
         i = endIdx;
         frameIndex++;

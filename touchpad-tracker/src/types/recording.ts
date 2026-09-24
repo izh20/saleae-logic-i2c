@@ -2,7 +2,7 @@ import { FingerSlot, StylusSlot, TouchpadConfig } from './finger';
 
 export interface RecordedFrame {
   timestamp: number;
-  packetType: 47 | 32;
+  packetType: number;
   slots: FingerSlot[];
   fingerCount: number;
   scantime: number;

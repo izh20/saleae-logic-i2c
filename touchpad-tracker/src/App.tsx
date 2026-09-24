@@ -560,6 +560,9 @@ const App: React.FC = () => {
             {/* ── 触摸板协议 ── */}
             <div style={{ marginBottom: 16 }}>
               <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>触摸板数据包格式</div>
+              <div style={{ fontSize: 12, color: '#bbbbbb', marginBottom: 6 }}>
+                应用按帧头字节自动嗅探格式，无需手动选择；同一 UDP 流中多种格式的包可混合解析。
+              </div>
               <table style={{ width: '100%' }}>
                 <thead>
                   <tr style={{ color: '#858585', fontSize: 11 }}>
@@ -569,11 +572,63 @@ const App: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr><td style={{ paddingRight: 8 }}>0x2F 0x00 0x04</td><td style={{ paddingRight: 8 }}>47B</td><td>完整手指包：5×8B 槽位（id/state/X/Y/L/W/P）+ scantime/fingerCount/keyState</td></tr>
-                  <tr><td style={{ paddingRight: 8 }}>0x20 0x00 0x04</td><td style={{ paddingRight: 8 }}>32B</td><td>简化手指包：5×5B 槽位（仅 id/state/X/Y）</td></tr>
+                  <tr><td style={{ paddingRight: 8 }}>0x2F 0x00 0x04</td><td style={{ paddingRight: 8 }}>47B</td><td>完整手指包 tp47：5×8B 槽位（id/state/X/Y/L/W/P）+ scantime/fingerCount/keyState</td></tr>
+                  <tr><td style={{ paddingRight: 8 }}>0x20 0x00 0x04</td><td style={{ paddingRight: 8 }}>32B</td><td>简化手指包 tp32：5×5B 槽位（仅 id/state/X/Y）</td></tr>
+                  <tr><td style={{ paddingRight: 8 }}>0x2A 0x00 0x04</td><td style={{ paddingRight: 8 }}>42B</td><td>手指包 tp2a：5×7B 槽位（id/state/X/Y，无 L/W，pressure u16le）</td></tr>
+                  <tr><td style={{ paddingRight: 8 }}>0x34 0x00 0x04</td><td style={{ paddingRight: 8 }}>52B</td><td>手指包 tp34：5×9B 槽位（id/state/X/Y/L/W (u8)，pressure u16le）</td></tr>
                   <tr><td style={{ paddingRight: 8 }}>0x2F 0x00 0x08</td><td style={{ paddingRight: 8 }}>47B</td><td>笔包：state/Id/X/Y/Pressure/TiltX/TiltY + 16 通道调试数据</td></tr>
                 </tbody>
               </table>
+            </div>
+
+            {/* ── 坐标包自动嗅探 ── */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ color: '#569cd6', fontWeight: 'bold', marginBottom: 8 }}>坐标包自动嗅探</div>
+              <div style={{ fontSize: 12, color: '#bbbbbb', marginBottom: 6 }}>
+                内置 <b>4 种 TP 手指包</b>格式（tp47 / tp32 / tp2a / tp34），按下表前 3 字节顺序匹配。
+                解析器在收到每个 UDP packet / CSV 数据块时自动选定匹配格式，无需用户在 UI 上选择。
+              </div>
+              <table style={{ width: '100%', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ color: '#858585' }}>
+                    <th style={{ textAlign: 'left', paddingRight: 8 }}>Format</th>
+                    <th style={{ textAlign: 'left', paddingRight: 8 }}>帧头</th>
+                    <th style={{ textAlign: 'left', paddingRight: 8 }}>总长</th>
+                    <th style={{ textAlign: 'left' }}>Slot 内字段</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style={{ paddingRight: 8 }}>tp47</td>
+                    <td style={{ paddingRight: 8 }}>0x2F 0x00 0x04</td>
+                    <td style={{ paddingRight: 8 }}>47B</td>
+                    <td>id/state + X/Y (u16le) + L/W/P (u8)</td>
+                  </tr>
+                  <tr>
+                    <td style={{ paddingRight: 8 }}>tp32</td>
+                    <td style={{ paddingRight: 8 }}>0x20 0x00 0x04</td>
+                    <td style={{ paddingRight: 8 }}>32B</td>
+                    <td>id/state + X/Y (u16le)</td>
+                  </tr>
+                  <tr>
+                    <td style={{ paddingRight: 8 }}>tp2a</td>
+                    <td style={{ paddingRight: 8 }}>0x2A 0x00 0x04</td>
+                    <td style={{ paddingRight: 8 }}>42B</td>
+                    <td>id/state + X/Y (u16le) + P (u16le)</td>
+                  </tr>
+                  <tr>
+                    <td style={{ paddingRight: 8 }}>tp34</td>
+                    <td style={{ paddingRight: 8 }}>0x34 0x00 0x04</td>
+                    <td style={{ paddingRight: 8 }}>52B</td>
+                    <td>id/state + X/Y (u16le) + L/W (u8) + P (u16le)</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div style={{ fontSize: 12, color: '#bbbbbb', marginTop: 6 }}>
+                <b>行为：</b>
+                Live 模式按 header 自动分流；CSV 回放按 <code style={{ background:'#3c3c3c', padding:'0 4px' }}>packetType</code> 字段反查 format；
+                录制 JSON 中 <code style={{ background:'#3c3c3c', padding:'0 4px' }}>length/width/pressure</code> 字段仅在对应 format 实际包含时出现。
+              </div>
             </div>
 
             {/* ── 手指颜色 ── */}
@@ -678,6 +733,14 @@ const App: React.FC = () => {
                 <span style={{ color: '#6a9955' }}>Max X / Max Y</span> 触摸板坐标上限（默认 4000×3000），用于 Canvas 归一化。
                 <br />
                 <span style={{ color: '#6a9955' }}>Stylus</span> TP Mode / MCU Mode 切换。
+                <br />
+                <span style={{ color: '#bbbbbb', fontSize: 12 }}>
+                  注：坐标包格式由 header 自动嗅探，顶部工具栏<b>无 format 选择器</b>。
+                </span>
+                <br />
+                <span style={{ color: '#bbbbbb', fontSize: 12 }}>
+                  FrameList 的 <b>Pkt</b> 列显示 packetType（47 / 32 / 42 / 52），对应上表 4 种 TP 手指包格式。
+                </span>
               </div>
             </div>
 

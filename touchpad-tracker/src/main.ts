@@ -4,7 +4,8 @@ import dgram from 'node:dgram';
 import started from 'electron-squirrel-startup';
 import Store from 'electron-store';
 import { HID, devices as hidDevices } from 'node-hid';
-import { FingerFrame, FingerSlot, TouchState, StylusState, StylusSlot, DEFAULT_CONFIG, TouchpadConfig } from './types/finger';
+import { FingerFrame, StylusState, StylusSlot, DEFAULT_CONFIG, TouchpadConfig } from './types/finger';
+import { tryParseFingerFrame } from './hid/coordinateParser';
 
 // Initialize electron-store for config persistence
 const store = new Store<{ config: TouchpadConfig }>({
@@ -37,78 +38,12 @@ function parseHexOrDec(val: string): number {
 }
 
 // Parse I2C data array to finger frame
+// 自动嗅探：按 header 字节匹配内置 CoordinateFormat（tp47/tp32/tp2a/tp34）。
+// stylus 头 [0x2F, 0x00, 0x08] 不在内置 format 中，由 parseStylusFrame 单独处理。
 function parseFingerFrame(data: string[], timestamp: number): FingerFrame | null {
-  if (data.length < 3) return null;
-
-  // Parse first 3 bytes for header
-  const byte0 = parseHexOrDec(data[0]);
-  const byte1 = parseHexOrDec(data[1]);
-  const byte2 = parseHexOrDec(data[2]);
-
-  // Check for finger packet header
-  const is47Byte = byte0 === 0x2F && byte1 === 0x00 && byte2 === 0x04;
-  const is32Byte = byte0 === 0x20 && byte1 === 0x00 && byte2 === 0x04;
-
-  if (!is47Byte && !is32Byte) return null;
-
-  const packetType: 47 | 32 = is47Byte ? 47 : 32;
-  const slotSize = packetType === 47 ? 8 : 5;
-  const dataLen = is47Byte ? 47 : 32;
-
-  if (data.length < dataLen) return null;
-
-  const slots: FingerSlot[] = [];
-
-  // Parse 5 finger slots starting at byte 3
-  for (let i = 0; i < 5; i++) {
-    const offset = 3 + i * slotSize;
-    if (offset >= dataLen) break;
-
-    const fingerStatus = parseHexOrDec(data[offset]);
-    const fingerId = (fingerStatus >> 4) & 0x0F;
-    const state = fingerStatus & 0x0F;
-
-    const xLow = parseHexOrDec(data[offset + 1]);
-    const xHigh = parseHexOrDec(data[offset + 2]);
-    const yLow = parseHexOrDec(data[offset + 3]);
-    const yHigh = parseHexOrDec(data[offset + 4]);
-
-    const x = xLow | (xHigh << 8);
-    const y = yLow | (yHigh << 8);
-
-    const slot: FingerSlot = {
-      fingerId,
-      state,
-      x,
-      y,
-    };
-
-    // Add extra fields for 47-byte format
-    if (packetType === 47 && offset + 7 < dataLen) {
-      slot.length = parseHexOrDec(data[offset + 5]);
-      slot.width = parseHexOrDec(data[offset + 6]);
-      slot.pressure = parseHexOrDec(data[offset + 7]);
-    }
-
-    slots.push(slot);
-  }
-
-  // Parse packet metadata
-  const metaOffset = packetType === 47 ? 43 : 28;
-  const scantimeLow = parseHexOrDec(data[metaOffset]);
-  const scantimeHigh = parseHexOrDec(data[metaOffset + 1]);
-  const scantime = scantimeLow | (scantimeHigh << 8);
-  const fingerCount = parseHexOrDec(data[metaOffset + 2]);
-  const keyState = parseHexOrDec(data[metaOffset + 3]);
-
-  return {
-    timestamp,
-    packetType,
-    slots,
-    fingerCount,
-    scantime,
-    keyState,
-  };
+  const bytes = data.map(parseHexOrDec);
+  const result = tryParseFingerFrame(bytes, timestamp);
+  return result ? result.frame : null;
 }
 
 // Parse bytes[15..46] as 16 s16 little-endian debug values.
