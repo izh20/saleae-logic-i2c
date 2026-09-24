@@ -1,6 +1,6 @@
 [package]
 name = "touchpad-tracker-tauri"
-version = "0.1.3"
+version = "0.1.4"
 description = "Touchpad coordinate and HID-over-I2C analysis tool"
 authors = ["izh20"]
 edition = "2021"

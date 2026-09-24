@@ -36,9 +36,11 @@ function updaterAsset(directory, description, predicate) {
 }
 
 function copyToRelease(source, outputDirectory) {
-  const target = path.join(outputDirectory, path.basename(source));
+  // GitHub Release normalizes spaces in uploaded asset names to dots.
+  const releaseName = path.basename(source).replaceAll(' ', '.');
+  const target = path.join(outputDirectory, releaseName);
   cpSync(source, target);
-  return path.basename(target);
+  return releaseName;
 }
 
 const version = readArgument('--version');

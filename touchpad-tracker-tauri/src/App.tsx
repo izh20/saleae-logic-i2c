@@ -24,7 +24,7 @@ const App: React.FC = () => {
   const [totalFrames, setTotalFrames] = useState(0);
   const [playbackFrame, setPlaybackFrame] = useState<FingerFrame | null>(null);
   const [i2cAddress, setI2cAddress] = useState<string>('0x2C');
-  const [showHelp, setShowHelp] = useState(false);
+  const [showHelp, setShowHelp] = useState(true);
   const [recordingMessage, setRecordingMessage] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState('');
   const [availableUpdate, setAvailableUpdate] = useState<UpdateInfo | null>(null);
@@ -624,6 +624,9 @@ const App: React.FC = () => {
             </div>
             <div style={{ color: '#858585', fontSize: 12, marginBottom: 16 }}>
               Saleae Logic Pro 16 → I²C → HID 触摸板协议分析工具
+            </div>
+            <div style={{ color: '#ce9178', fontSize: 12, marginBottom: 16 }}>
+              后续可按 H 打开或关闭帮助。
             </div>
 
             <div style={{ marginBottom: 16 }}>
