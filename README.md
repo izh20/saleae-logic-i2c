@@ -3,8 +3,10 @@
 一套围绕 **触摸板 HID-over-I²C** 协议搭建的端到端工具链，覆盖三个层次：
 
 1. **物理层** —— Saleae Logic 2 + 自研 HLA，实时把 I²C 波形解码为 JSON 并通过 UDP 推送。
-2. **协议层** —— Electron 主进程解析触摸板 47/32 字节手指包、笔包与 16 通道调试数据。
+2. **协议层** —— Tauri Rust 后端解析触摸板手指包、笔包与 HID-over-I2C 数据。
 3. **分析层** —— React 渲染层完成 5 个工作流：实时轨迹 / 录制回放 / 帧列表 / 调试通道 / HID 协议分析。
+
+桌面应用仅构建和发布 `touchpad-tracker-tauri/`。`touchpad-tracker/` 是保留的 Electron 历史实现，不再由 GitHub Actions 构建或发布。
 
 附带一个 **Waratah** 子工程：用 `.wara`（TOML）文本格式作为 HID Report Descriptor 的可读中间表示，提供与原始字节描述符的双向转换、Power-On 序列分析、HID 字段表解码。
 
@@ -20,7 +22,12 @@
 │
 ├── i2c_udp_receiver.py                   # 命令行 UDP 接收器（调试用）
 │
-├── touchpad-tracker/                     # Electron + React 主应用
+├── touchpad-tracker-tauri/               # Tauri + React 主应用（构建和发布目标）
+│   ├── src-tauri/                        # Rust 后端、Tauri 配置和打包资源
+│   ├── src/                              # React 前端
+│   └── README.md                          # Tauri 构建、发布和更新说明
+│
+├── touchpad-tracker/                     # Electron 历史实现（不再构建或发布）
 │   ├── src/
 │   │   ├── main.ts                       # 主进程：UDP 监听 + 包解析 + IPC
 │   │   ├── preload.ts                    # contextBridge 暴露安全 API
@@ -58,16 +65,14 @@
 ### 1. 安装依赖
 
 ```bash
-cd touchpad-tracker
+cd touchpad-tracker-tauri
 npm install
 ```
 
 ### 2. 启动应用
 
 ```bash
-npm start
-# 或使用国内镜像加速
-bash scripts/build.sh
+npm run tauri dev
 ```
 
 应用窗口打开后默认进入 **Live** 模式，等待 UDP 50000 端口上的触摸板数据。

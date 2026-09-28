@@ -62,6 +62,7 @@ const macos = updaterAsset(macosDirectory, 'macOS updater artifact', name => nam
 const windows = updaterAsset(windowsDirectory, 'Windows updater artifact', name => name.endsWith('.exe'));
 const linux = updaterAsset(linuxDirectory, 'Linux updater artifact', name => name.endsWith('.AppImage'));
 const dmg = findExactlyOne(macos.files, 'macOS DMG installer', file => file.endsWith('.dmg'));
+const msi = findExactlyOne(windows.files, 'Windows MSI installer', file => file.endsWith('.msi'));
 
 const releaseBaseUrl = `https://github.com/${repository}/releases/download/${encodeURIComponent(tag)}`;
 const platforms = {};
@@ -78,6 +79,7 @@ for (const [target, updater] of [
   };
 }
 copyToRelease(dmg, outputDirectory);
+copyToRelease(msi, outputDirectory);
 
 writeFileSync(path.join(outputDirectory, 'latest.json'), `${JSON.stringify({
   version,
