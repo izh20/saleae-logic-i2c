@@ -42,18 +42,25 @@
 | `Manager.start_capture(device_configuration, device_id, capture_configuration)` | 可用 |
 | 采集模式 | `TimedCaptureMode(duration_seconds)`、`ManualCaptureMode()`、`DigitalTriggerCaptureMode(trigger_type, trigger_channel_index, ...)` |
 | `Manager.get_devices(include_simulation_devices=True)` | 可用；**模拟设备存在，无硬件也能跑通采集路径** |
-| `Capture.add_analyzer(name, label, settings)` | 按 UI 名称精确匹配；I2C 分析器设置键需在实施时实测确认 |
+| `Capture.add_analyzer(name, label, settings)` | 实测：名称 `"I2C"` 大小写敏感；设置键为 `SCL`/`SDA`，值须为 int 通道号；目标通道必须已启用。**对已加载的 `.sal` 也能新增分析器并取得可用句柄**（库文档称不可访问，实测可） |
+| `ELECTRON_RUN_AS_NODE` | **实测陷阱**：该变量被设为 `1` 时 Logic 2 的 Electron 二进制以 Node 模式启动，拒绝 `--automation`，应用完全起不来、10430 不监听。调用 `launch()` 前必须剥离 |
+| macOS 应用路径 | 实测：须传二进制 `/Applications/Saleae Logic.app/Contents/MacOS/Logic`，传 `.app` 包路径报 `PermissionError` |
+| 数值导出 radix | 实测：必须用 `DataTableExportConfiguration(handle, RadixType.HEXADECIMAL)`。默认 radix 把字节按 Unicode 码点写成字符（`0xFF` → `c3 bf`），是必须避开的陷阱 |
 | `Capture.export_data_table(filepath, analyzers, columns, filter, iso8601_timestamp)` | 解码后带时间戳的表格 |
 | `Capture.export_raw_data_csv(directory, digital_channels, analog_channels, ...)` | **原始边沿数据**，做精确时序测量用 |
 | `Capture.save_capture(filepath)` / `Manager.load_capture(filepath)` | 存/读 `.sal` |
 | WebSocket 流式 API | 不可用（`websockets` / `websocket-client` 均未安装） |
 | 已有 HLA | `~/Library/Application Support/SaleaeLogic/Extensions/i2c_hla`，推 UDP 50000 |
 
-可用测试素材（真实抓包）：
+可用测试素材（真实抓包，通道为实测结果）：
 
-- `~/Documents/lenovo开机时序.sal`
-- `~/Documents/hp008 palm.sal`
-- `~/Downloads/友商.sal`
+| 文件 | 启用通道 | 可用性 |
+|---|---|---|
+| `~/Documents/lenovo开机时序.sal` | [0,1,2,3] | 可用 |
+| `~/Downloads/友商.sal` | [0,1,2] | 可用（体量大，导出耗时数分钟） |
+| `~/Documents/hp008 palm.sal` | [5,6,7,8,9] | **不可用** —— 实测各通道组合均解码不出有意义的 I2C 流量 |
+
+另一个实测结论：**每个 `.sal` 的启用通道都不同**，且「按解码行数」挑通道会选错（噪声组合反而行数最多）。真总线特征是地址种类少、ACK 比例高、错误少，打分函数须据此设计。
 
 ## 4. 架构
 
