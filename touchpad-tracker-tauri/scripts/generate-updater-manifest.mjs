@@ -59,10 +59,14 @@ for (const directory of [macosDirectory, windowsDirectory, linuxDirectory]) {
 mkdirSync(outputDirectory, { recursive: true });
 
 const macos = updaterAsset(macosDirectory, 'macOS updater artifact', name => name.endsWith('.app.tar.gz'));
-const windows = updaterAsset(windowsDirectory, 'Windows updater artifact', name => name.endsWith('.exe'));
+// Match the NSIS installer specifically: the Windows artifact directory also carries the
+// portable archive, and a bare `.exe` predicate would trip findExactlyOne once anything
+// in that directory ships the app as a loose executable.
+const windows = updaterAsset(windowsDirectory, 'Windows updater artifact', name => name.endsWith('-setup.exe'));
 const linux = updaterAsset(linuxDirectory, 'Linux updater artifact', name => name.endsWith('.AppImage'));
 const dmg = findExactlyOne(macos.files, 'macOS DMG installer', file => file.endsWith('.dmg'));
 const msi = findExactlyOne(windows.files, 'Windows MSI installer', file => file.endsWith('.msi'));
+const portable = findExactlyOne(windows.files, 'Windows portable archive', file => file.endsWith('.7z'));
 
 const releaseBaseUrl = `https://github.com/${repository}/releases/download/${encodeURIComponent(tag)}`;
 const platforms = {};
@@ -80,6 +84,7 @@ for (const [target, updater] of [
 }
 copyToRelease(dmg, outputDirectory);
 copyToRelease(msi, outputDirectory);
+copyToRelease(portable, outputDirectory);
 
 writeFileSync(path.join(outputDirectory, 'latest.json'), `${JSON.stringify({
   version,
